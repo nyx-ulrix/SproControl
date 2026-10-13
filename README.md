@@ -1,0 +1,249 @@
+# SproControl
+
+An open, offline controller for the **iKape K2** portable espresso machine: an Android app with a
+home-screen widget, the same UI as a browser page over Web Bluetooth, and a small Python library.
+The machine's Bluetooth protocol was recovered by reverse-engineering the official app and then
+verified byte-for-byte against the real machine; the full write-up is in [PROTOCOL.md](PROTOCOL.md).
+
+<p align="center">
+  <img src="docs/img/app-main.jpg" width="19%" alt="Main screen, connected">
+  <img src="docs/img/app-heating.jpg" width="19%" alt="Heating: the colour climbs with the water temperature">
+  <img src="docs/img/app-brewing.jpg" width="19%" alt="Brewing: pre-soak and hold count down">
+  <img src="docs/img/app-presets.jpg" width="19%" alt="Presets">
+  <img src="docs/img/app-settings.jpg" width="19%" alt="Settings: water temperature offset">
+</p>
+<p align="center">
+  <img src="docs/img/widget-unlinked.png" width="32%" alt="Home-screen widget before it has reached the machine: dimmed, search only">
+  <img src="docs/img/widget-linked.png" width="32%" alt="Home-screen widget: Extract, Heat & Extract, Purge">
+  <img src="docs/img/widget-brewing.png" width="32%" alt="Home-screen widget while brewing: timer and Stop">
+</p>
+
+A 40 s mock brew (heating, pre-soak, hold, extraction, done) recorded on an emulator with the
+machine's own frames replayed: [docs/brew-demo.mp4](docs/brew-demo.mp4).
+
+> This project is not affiliated with the machine's maker. It drives a heater and a pump; use it at
+> your own risk and keep the machine's own safety rules in mind.
+
+## What it does
+
+- **Four meters, one gauge.** Temperature, flow speed, pre-soak and hold are concentric arcs with
+  their name and value curved along them; drag along an arc to set it. Extraction time is a straight
+  bar underneath. Every change is sent once, on release, then read back from the machine and
+  confirmed in the title bar (`Temp 92°C saved`), or retried if the machine dropped the write.
+- **Heat, Heat & Extract, Extract, Purge.** Purge runs the pump alone for 30 s with no pre-soak or
+  hold. The settings it replaced are kept on the phone and put back when it ends, or, if it was
+  interrupted, on the next connect or widget tap. Any running mode turns the row into one Stop button.
+- **Live readout.** Water temperature, battery and charging state from the machine's status frames
+  (about one per second). While heating, the preset part of the arc turns grey and the colour climbs
+  with the water temperature, with bubbles rising from it.
+- **Brew timer and phases.** The pre-soak and hold arcs count down during a brew; the phase and an
+  elapsed timer sit under the readout, and the final time stays for 10 s after the brew.
+- **Presets.** Name and save the current settings; the last-used preset is re-applied on connect and
+  its name sits under the temperature and in the widget. A **Default** preset with the machine's
+  factory settings (95 °C, pre-soak 7 s, hold 7 s) is there from the first run. Presets, the device
+  nickname and the offset live only on the phone.
+- **Water temperature offset.** Calibrate against a thermometer: every temperature shown is
+  shifted, and the setpoint sent to the machine is corrected the other way.
+- **Home-screen widget.** Dimmed with a Search button until it has reached the machine; then Extract /
+  Heat & Extract / Purge, and a running timer with Stop while brewing. Each tap is one short Bluetooth
+  session: connect, read one status frame, send, disconnect. Nothing polls in the background.
+- **Offline by design.** The app has no network permission. The link is held while the app is on
+  screen and for 30 s after you leave it, then dropped and the page is paused. Before connecting, the
+  whole UI is shown greyed out with the values the machine last reported.
+- **Browser version.** `k2.html` is the same UI; opened in Chrome it talks to the machine through
+  Web Bluetooth (phone or laptop), no install needed.
+
+## Architecture
+
+```mermaid
+flowchart LR
+  subgraph Phone["Android phone"]
+    subgraph App["Ikape K2 app"]
+      UI["k2.html<br/>gauge UI · presets · timers<br/>served from an app-private origin"]
+      MA["MainActivity<br/>BLE link · JS bridge · lifecycle"]
+      UI -- "AndroidBle.write(hex)" --> MA
+      MA -- "k2Native.data(hex)" --> UI
+    end
+    W["K2Widget<br/>home-screen widget<br/>one short BLE session per tap"]
+    P[("SharedPreferences<br/>name · last profile · offset · state")]
+    MA --> P
+    W --> P
+  end
+  K2["iKape K2<br/>GATT service FFF0<br/>FFF2 write · FFF1 notify"]
+  MA <-- "0x7F commands / 0x7E replies" --> K2
+  W <-- "BLE" --> K2
+  subgraph Laptop
+    B["Chrome: k2.html<br/>Web Bluetooth"]
+    PY["pcm_protocol.py<br/>encoder · decoder · bleak"]
+  end
+  B <-- "BLE" --> K2
+  PY <-- "BLE" --> K2
+```
+
+The page is one HTML file with no dependencies. On Android it runs in a WebView that serves it (and
+its bundled font) from assets under a private `https://app.sprocontrol.local/` origin; every other
+request is denied. The page never sees Bluetooth directly: it hands complete frames to Java as hex
+and gets notification bytes back the same way, so the protocol code is identical in the APK and in
+the browser.
+
+## How a session runs
+
+```mermaid
+flowchart TD
+  A["Tap the name"] --> B{"Bonded K2?"}
+  B -- yes --> C["connectGatt"]
+  B -- no --> S["Scan (asks for location only now)"] --> C
+  C --> D["Discover FFF0, enable FFF1 notifications"]
+  D --> E["Wait 300 ms"]
+  E --> F["Handshake, 40 ms apart:<br/>SET_TIME 0x04 · GET_TEMP 0x15 · GET_PARAM 0x17<br/>GET_APPT 0x24 · GET_INFO 0x08 · GET_CUPS 0x06 · GET_STATE 0x00"]
+  F --> G["Status frames ~1/s:<br/>battery · charge · temperature · state · error"]
+  G --> H{"User action"}
+  H -- "arc / bar released" --> I["SET 0x16 or 0x18, then GET"]
+  I --> J{"Read-back matches?"}
+  J -- yes --> K["'saved'"]
+  J -- "no, < 4 tries" --> I
+  J -- no --> L["'not accepted'"]
+  H -- "brew button" --> M["SET_WORK_STATE 0x02 [mode, 1]"]
+  M --> G
+  G -- "running state" --> N["Timer runs, pre-soak / hold count down"]
+  G -- "complete" --> O["'Brew done', final time for 10 s"]
+  F -- "a GET went unanswered" --> R["Ask again, up to 4×"] --> F
+  H -- "leave the app" --> Q["30 s later: disconnect, pause page"]
+```
+
+## The protocol in one table
+
+Frames are `7F LEN_HI LEN_LO CHK CMD DATA…` from the phone and `7E …` from the machine, with
+`LEN` the whole frame length and `CHK` the byte sum of everything else. Details, reply layouts and
+worked examples: [PROTOCOL.md](PROTOCOL.md).
+
+| Opcode | Meaning | Data |
+|---|---|---|
+| `0x00` | state | reply: battery, charge flags, temperature °C, state, error |
+| `0x02` | start / stop | `[mode 0 heat · 1 heat+extract · 2 extract, 1/0]` |
+| `0x04` | clock | `[weekday, month, day, year−2020, h, m, s]` |
+| `0x15` / `0x16` | preset temperature | **°F** on the K2 (`100..204` = 38..96 °C) |
+| `0x17` / `0x18` | brew parameters | `[flow, pre-soak, hold, extraction]` with ranges in the reply |
+| `0x06` `0x08` `0x24` | cups, device info, schedule | query |
+
+There is no authentication on the link. That is the machine's design, not something an app can
+add: anyone in range who knows these frames can control it. Bonding gives link encryption only.
+
+## How the protocol was recovered
+
+1. **The official app.** HappyGo (`com.timeyaa.flutter_coffeecup2`, Flutter). Java decompilers only
+   show the Flutter embedding; the logic is AOT-compiled Dart in `libapp.so`. `strings` on that
+   library gave class names (`PcmBlePack`, `BleFrameDecoder`, `PcmDevice`), enum names and the
+   `0000xxxx-0000-1000-8000-00805F9B34FB` UUID base, but no opcodes: integer literals are compiled
+   into the AOT snapshot, not the string pool.
+2. **Sniffing, and why it failed.** The phone (OPPO, Android 14, not rooted) exposes no HCI snoop
+   log: `bluetooth_hci_log` is unset, `/data/misc/bluetooth/logs` is unreadable, `adb bugreport`
+   ships without a btsnoop on this ROM, and Wireshark's `androiddump` was not installed. The one
+   thing available, the btsnooz summary inside `dumpsys bluetooth_manager`, was decoded with a small
+   custom parser (version byte, 64-bit timestamp, zlib body, per-record lengths and deltas): it held
+   only two ATT operations and no payloads. The machine's USB port is charge-only.
+3. **GATT by hand.** nRF Connect, driven over `adb` (`input tap`, `screencap`) so the steps were
+   repeatable, found service `FFF0` with `FFF1` (notify) and `FFF2` (write without response), the
+   bonded name `Hi-t-1292G0_B526` and the fact that the machine pushes an 11-byte status frame on its
+   own once notifications are on. Comparing frames across states gave the checksum rule. The official
+   app's aggressive auto-reconnect kept stealing the link, so it was disabled with
+   `pm disable-user` for the duration.
+4. **Reading the Dart.** [blutter](https://github.com/worawit/blutter), built in a throwaway
+   `ubuntu:24.04` container because there was no native toolchain on the laptop, turned `libapp.so`
+   into annotated ARM64 assembly plus an object pool. From there: the frame builder and checksum
+   (`PcmBlePack.sendData`/`check`), every opcode (from the `BleCommand` objects in the pool; list
+   constants are Smi-tagged, i.e. value × 2), the
+   connect sequence with its 300 ms and 40 ms delays (stored as microseconds), the enum tables for
+   states and errors, and the fact that the only AES in the app decrypts firmware downloads, not
+   Bluetooth traffic. That became `PROTOCOL.md` and `pcm_protocol.py`, whose self-check caught that
+   the first hand-computed checksums were wrong, not the code.
+5. **Validation with a Bluetooth logger.** Two loggers, both `adb logcat`:
+   - HappyGo logs its own traffic (`send data:` / `Receiving data:`), which showed the predicted
+     handshake frames byte-for-byte and in the predicted order.
+   - This app logs every frame it sends and receives under the `K2` tag. Those logs, captured during
+     real sessions, exposed everything the binary could not: the preset temperature is kept in **°F**
+     (the first setpoints sent in °C were silently ignored as below the 100 °F minimum), the machine
+     stores whole °C and reads back `floor(°C × 1.8 + 32)`, long replies arrive in fragments with their
+     own headers, and writes sent in quick succession are sometimes dropped without an echo. The
+     app's read-back check with resend exists because of that log.
+6. **Android got in the way.** The OPPO ROM drops scan results for apps that declare Bluetooth
+   scanning as "never for location", so the app connects to the bonded device directly and only asks
+   for location when it has to scan. The WebView has no Web Bluetooth, hence the Java bridge. A page
+   loaded from `file://` cannot load its own font (cross-origin), hence the private origin. `aapt2`
+   on Windows writes asset paths with backslashes, hence assets are added with `jar`.
+
+### Challenges and how they were solved
+
+| Challenge | Resolution |
+|---|---|
+| Flutter app: no Java to decompile | `strings` for names, blutter for the Dart AOT code |
+| No HCI snoop on an unrooted OPPO | Decoded the `dumpsys` btsnooz buffer (no payloads), then nRF Connect driven over adb |
+| HappyGo stole the Bluetooth link | `pm disable-user` while capturing, re-enabled after |
+| Opcodes invisible in strings | Smi-tagged constants in the assembly, enum names from the object pool |
+| Setpoints ignored by the machine | Logged traffic showed °F; convert and compare read-backs in °C |
+| Writes occasionally dropped | Read back every set and resend up to three times |
+| "Not found" on the first scan | ColorOS location deny list; bonded-device shortcut, just-in-time location |
+| Widget taps fought the app for the single link | App publishes a short "hold" flag the widget respects |
+| App kept the link alive in the background | 30 s grace after leaving, then disconnect and pause the page |
+| Bundled font not loading in the APK | Private `https://` origin via `shouldInterceptRequest`; assets packaged with `jar` |
+
+## Security notes
+
+The code was reviewed on the assumption that nothing is trusted: not the machine, not stored data,
+not the page.
+
+- No `INTERNET` permission; the WebView answers requests from assets or denies them.
+- Everything that crosses a boundary is validated: frames (length, checksum, ranges), bridge
+  arguments (hex, lengths, JSON fields), stored presets and remembered values.
+- Device names reach the page JSON-quoted, never as code; preset names are rendered as text.
+- Release builds are not debuggable and are signed with a dedicated key; backups are disabled.
+- The widget's receiver is not exported and its intents are explicit and immutable.
+- No background work: no polling, no services, one inexact alarm to clear the final brew time.
+
+## Build and install
+
+Requirements: Android SDK build-tools 35, platform 35, a JDK (Android Studio's works) and `adb`.
+No Gradle.
+
+```powershell
+powershell -File android/build.ps1            # release: not debuggable, release key
+powershell -File android/build.ps1 -Debug     # debuggable, debug key
+powershell -File android/build.ps1 -Install   # ...and push to the connected phone
+```
+
+The first release build creates `~/.android/sprocontrol-release.jks` and its password file next to
+it; back both up, updates must be signed with the same key. Pair the machine once (in the app, or
+with any BLE tool), then tap the name to connect.
+
+### Browser
+
+Serve the repository (`python -m http.server 8765`) and open `k2.html` in Chrome; on a phone, forward
+the port with `adb reverse tcp:8765 tcp:8765`.
+
+### Tests
+
+- `python pcm_protocol.py` runs the encoder/decoder self-check, including frames captured from the
+  machine.
+- `tests/page_test.html` runs the page's protocol layer in a browser against captured frames: decoding,
+  checksum rejection, bridge validation, °F conversion, read-back and resend, purge, timers.
+
+## Layout
+
+| Path | What |
+|---|---|
+| `k2.html` | The whole UI (also the browser version) |
+| `android/` | Manifest, `MainActivity`, `K2Widget`, resources, `build.ps1` |
+| `fonts/` | Nunito (SIL OFL 1.1) |
+| `pcm_protocol.py` | Frame encoder, reply decoder, `bleak` sender |
+| `PROTOCOL.md` | The recovered protocol, with live verification notes |
+| `tests/` | Browser self-check for the page |
+| `docs/` | Screenshots and the demo clip |
+
+## Not covered
+
+Cup history, device-info and schedule replies are not decoded; the flow-speed setting is stored by
+the machine but its effect on the pump was not confirmed; the K2 is the only model tested.
+
+## License
+
+MIT, see [LICENSE](LICENSE). Nunito is licensed under the SIL Open Font License 1.1.

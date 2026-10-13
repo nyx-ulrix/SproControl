@@ -1,0 +1,8 @@
+<!doctype html><meta charset="utf-8"><title>k2 page test</title>
+<iframe id="f" src="../k2.html" style="width:411px;height:880px;border:0"></iframe>
+<pre id="out">running…</pre>
+<script>
+const f=document.getElementById('f');
+f.addEventListener('load',()=>{const w=f.contentWindow,s=w.document.createElement('script');s.src='tests/page_test.js';w.document.body.appendChild(s);
+  const t=setInterval(()=>{if(w.__results){clearInterval(t);document.getElementById('out').textContent=w.__results.join('\n');}},200);});
+</script>

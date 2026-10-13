@@ -1,0 +1,9 @@
+# third-party app package used for the analysis (copyrighted, not ours to redistribute)
+*.xapk
+*.apk
+!android/out/.gitkeep
+android/out/
+__pycache__/
+graphify-out/
+.claude/
+*.log

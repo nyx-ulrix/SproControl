@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Home-screen widget, one row: name + status on the left; the controls (timer, brew buttons or search)
+     centred in the space between where the text ends and the widget's right edge. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/wroot"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_bg"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingStart="14dp"
+    android:paddingEnd="6dp">
+
+    <LinearLayout
+        android:id="@+id/wtext"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/wname"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxWidth="150dp"
+            android:singleLine="true"
+            android:text="Ikape K2"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/wstat"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxWidth="150dp"
+            android:singleLine="true"
+            android:text="--"
+            android:textColor="#80FFFFFF"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:gravity="center"
+        android:orientation="horizontal">
+
+        <Chronometer
+            android:id="@+id/wtimer"
+            android:layout_width="wrap_content"
+            android:layout_height="44dp"
+            android:gravity="center"
+            android:paddingStart="4dp"
+            android:paddingEnd="4dp"
+            android:textColor="#FFFFFF"
+            android:textSize="17sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
+        <ImageButton
+            android:id="@+id/wextract"
+            android:layout_width="38dp"
+            android:layout_height="44dp"
+            android:background="@android:color/transparent"
+            android:contentDescription="Extract"
+            android:padding="6dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_extract" />
+
+        <ImageButton
+            android:id="@+id/wboth"
+            android:layout_width="38dp"
+            android:layout_height="44dp"
+            android:background="@android:color/transparent"
+            android:contentDescription="Heat and extract"
+            android:padding="6dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_both" />
+
+        <ImageButton
+            android:id="@+id/wpurge"
+            android:layout_width="38dp"
+            android:layout_height="44dp"
+            android:background="@android:color/transparent"
+            android:contentDescription="Purge: 30 seconds of water, no heating"
+            android:padding="6dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_purge" />
+
+        <ImageButton
+            android:id="@+id/wopen"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:background="@android:color/transparent"
+            android:contentDescription="Search for the K2"
+            android:padding="10dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_search" />
+    </LinearLayout>
+</LinearLayout>

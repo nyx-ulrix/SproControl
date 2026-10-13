@@ -1,0 +1,712 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Ikape K2 Controller</title>
+<style>
+/* Nunito (SIL OFL 1.1, see fonts/OFL.txt) ships next to this file; nothing is fetched from the network. */
+@font-face{font-family:"Nunito";font-weight:200 1000;font-display:swap;src:local("Nunito"),url(fonts/Nunito-wght.ttf) format("truetype")}
+/* Ikape K2 controller. Talks to the machine over Web Bluetooth using the
+   PcmBlePack protocol in PROTOCOL.md (service FFF0, write FFF2, notify FFF1).
+   Committed dark single-theme. */
+:root{
+  --bg:#000000;--surface:rgba(255,255,255,0.08);--surface-2:rgba(255,255,255,0.05);
+  --fg:#ffffff;--muted:rgba(255,255,255,0.5);--faint:rgba(255,255,255,0.14);
+  --heat:#FF3B30;--extract:#00E0FF;--ready:#30D158;
+  --r:16px;color-scheme:dark;
+  --font:"Nunito",ui-rounded,"SF Pro Rounded",-apple-system,system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+/* One screen, no scrolling: the layout fills the viewport and the gauge takes what's left. */
+html,body{margin:0;height:100%;overflow:hidden;overscroll-behavior:none}
+body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-smoothing:antialiased;letter-spacing:.2px;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+[hidden]{display:none!important}
+.wrap{max-width:460px;height:100%;box-sizing:border-box;margin:0 auto;padding-inline:16px;padding-block:12px 8px;display:flex;flex-direction:column;gap:12px}
+
+.status{display:flex;align-items:center;gap:11px;width:100%;background:var(--surface);border:0;border-radius:14px;height:54px;padding:0 18px;cursor:pointer;font-family:var(--font);color:var(--fg)}
+.status:active{transform:scale(.99)}
+.dot{width:11px;height:11px;border-radius:50%;background:var(--muted);flex:none;transition:.3s}
+.dot.scanning{background:var(--extract);animation:blink .5s steps(1) infinite}
+.dot.found{background:var(--heat)}
+.dot.connected{background:var(--ready);box-shadow:0 0 12px var(--ready)}
+@keyframes blink{50%{opacity:.25}}
+.status b{font-size:17px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:0 1 auto;max-width:55%}
+/* One notification at a time, right of the name; each shows 1 s then the next replaces it. */
+.pnote{margin-left:auto;min-width:0;flex:0 1 auto;font-size:13px;font-weight:800;color:var(--ready);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pnote.bad{color:var(--heat)}
+.pnote.show{animation:pin .15s ease-out}
+@keyframes pin{from{opacity:0;transform:translateX(6px)}}
+.pencil{width:15px;height:15px;flex:none;color:var(--muted);margin-left:auto}
+.pnote:not(:empty)+.pencil{margin-left:0}
+.rename{flex:1;min-width:0;font:800 17px var(--font);color:var(--fg);background:rgba(255,255,255,.08);border:0;border-radius:8px;padding:6px 8px;outline:2px solid var(--extract)}
+
+.app{transition:opacity .3s;flex:1;min-height:0;display:flex;flex-direction:column}
+/* Disconnected: the whole UI stays visible as a grey preview with placeholder values. */
+.app.off{opacity:.45;pointer-events:none;filter:grayscale(1)}
+.stage{flex:1;min-height:0;display:flex;flex-direction:column;gap:6px}
+/* The gauge takes every pixel left over; all four arcs share one centre just off the right edge. */
+.gauge{position:relative;flex:1;min-height:0}
+/* Until the machine has reported its own brew settings, the placeholders stay dimmed. */
+.app.stale #segs,.app.stale #soakFill,.app.stale #holdFill,.app.stale .ext{opacity:.35}
+.gauge>svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none}
+/* Only the bars themselves take touches (.hit paths); touches elsewhere do nothing. */
+.gauge .hit{pointer-events:stroke;touch-action:none;cursor:pointer}
+.seg.lit{filter:drop-shadow(0 0 6px var(--extract))}
+.lbl{font:800 10.5px var(--font);letter-spacing:1.4px;fill:rgba(255,255,255,.55);text-transform:uppercase}
+/* Centre readout lives inside the arcs (foreignObject), so its sizes are in gauge units. */
+.center{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;font-family:var(--font);color:var(--fg);user-select:none}
+.center .u{font-size:12px;font-weight:800;color:var(--muted);line-height:1.1}
+.center .big{font-size:58px;font-weight:900;line-height:.92;letter-spacing:-1.5px;font-variant-numeric:tabular-nums}
+.center .prof{font-size:11px;font-weight:800;color:var(--muted);margin-top:4px;max-width:110px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.center .read{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:800;color:var(--muted);margin-top:6px}
+.center .read svg{width:13px;height:13px}
+.center .batt{display:flex;align-items:center;gap:3px}
+.center .batt b{color:var(--ready)}
+.center .bolt{width:11px!important;height:11px!important;color:var(--ready)}
+.center .phase{font-size:12px;font-weight:800;color:var(--fg);margin-top:5px}
+/* Brew timer: muted text under the phase; counts up while the machine runs, final time stays 10 s (tap to dismiss). */
+.center .timer{font-size:12px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--muted);margin-top:2px;pointer-events:auto;cursor:pointer}
+
+.actions{flex:none;height:62px;display:flex;align-items:center;justify-content:center}
+.modes{display:flex;justify-content:space-around;align-items:center;width:100%}
+.mode{border:0;background:none;cursor:pointer;padding:12px;display:grid;place-items:center;color:var(--muted);transition:transform .12s}
+.mode svg{width:34px;height:34px;filter:drop-shadow(0 0 7px currentColor)}
+.mode.heat{color:var(--heat)}.mode.both{color:var(--ready)}.mode.extract{color:var(--extract)}.mode.purge{color:#9DA6FF}
+.mode:active{transform:scale(.88)}
+.stopbtn{border:0;background:none;cursor:pointer;height:62px;display:grid;place-items:center;color:var(--heat);transition:transform .12s;width:100%}
+.stopbtn svg{width:40px;height:40px;filter:drop-shadow(0 0 12px var(--heat))}
+.stopbtn:active{transform:scale(.9)}
+
+/* Presets: icon button top-left of the gauge; its width stops short of the outer ring (fitPresets). */
+.presets{position:absolute;left:0;top:0;z-index:4}
+.pbtn{display:flex;align-items:center;gap:4px;height:34px;padding:0 2px;border:0;background:none;color:var(--fg);font:800 15px var(--font);cursor:pointer;max-width:150px}
+.pbtn:active{transform:scale(.97)}
+.pbtn .caret{width:16px;height:16px;flex:none;color:var(--muted)}
+.pname{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.pmenu{position:absolute;left:0;top:44px;width:min(300px,calc(100vw - 32px));background:#161618;border:1px solid rgba(255,255,255,.08);border-radius:16px;box-shadow:0 16px 40px rgba(0,0,0,.75);padding:6px}
+.plist{max-height:45vh;overflow:auto}
+.prow{display:flex;align-items:center;gap:8px;padding:6px 4px 6px 10px;border-radius:10px;cursor:pointer}
+.prow.on{background:rgba(255,255,255,.07)}
+.prow:active{background:rgba(255,255,255,.1)}
+.prow .nm{flex:1;min-width:0;font-weight:800;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ibtn{border:0;background:none;color:var(--muted);width:34px;height:34px;flex:none;display:grid;place-items:center;cursor:pointer;border-radius:10px}
+.ibtn svg{width:17px;height:17px}
+.ibtn:active{background:rgba(255,255,255,.08)}
+.psave{display:flex;align-items:center;gap:6px;padding:6px 2px 2px 8px;margin-top:4px;border-top:1px solid rgba(255,255,255,.07)}
+.psave>svg{width:15px;height:15px;color:var(--muted);flex:none}
+.psave input{flex:1;min-width:0;height:36px;border:0;border-radius:10px;background:rgba(255,255,255,.07);color:var(--fg);font:800 14px var(--font);padding:0 10px;outline:none}
+.psave input:focus{outline:2px solid var(--extract)}
+.psave .ibtn{color:var(--extract)}
+
+/* Extraction: the meters' style, straight. Drag along it. */
+.gear{position:absolute;right:-6px;top:-2px;z-index:4;border:0;background:none;color:var(--muted);width:40px;height:40px;display:grid;place-items:center;cursor:pointer;border-radius:12px}
+.gear svg{width:21px;height:21px}
+.app.off .gear{pointer-events:auto} /* settings work while disconnected */
+.gear:active{background:rgba(255,255,255,.08)}
+/* Settings: full-screen sheet over the app. */
+.sheet{position:fixed;inset:0;z-index:20;background:var(--bg);padding:calc(12px + env(safe-area-inset-top,0px)) 16px 16px;display:flex;flex-direction:column;gap:18px;animation:sheetin .2s ease-out;max-width:460px;margin:0 auto}
+@keyframes sheetin{from{opacity:0;transform:translateY(16px)}}
+.shead{display:flex;align-items:center;justify-content:space-between;height:44px}
+.shead b{font-size:20px;font-weight:900}
+.sset{background:var(--surface-2);border-radius:var(--r);padding:16px;display:flex;flex-direction:column;gap:12px}
+.sset .lab{display:flex;justify-content:space-between;align-items:baseline}
+.sset .lab span{font-size:10.5px;font-weight:800;letter-spacing:1.4px;color:rgba(255,255,255,.55);text-transform:uppercase}
+.sset .lab b{font-size:22px;font-weight:900;font-variant-numeric:tabular-nums}
+.sset p{margin:0;font-size:13px;line-height:1.45;color:var(--muted);font-weight:600}
+.zero{position:absolute;left:50%;top:-3px;width:2px;height:20px;margin-left:-1px;background:rgba(255,255,255,.5);border-radius:1px}
+.ext{flex:none;padding:0 4px 4px}
+.ext .lab{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+.ext .lab span{font-size:10.5px;font-weight:800;letter-spacing:1.4px;color:rgba(255,255,255,.55);text-transform:uppercase}
+.ext .lab b{font-size:15px;font-weight:900;font-variant-numeric:tabular-nums}
+.extbar{position:relative;height:30px;touch-action:none;cursor:pointer}
+.extbar .trk,.extbar .fil{position:absolute;left:0;top:0;height:14px;border-radius:7px}
+.extbar .trk{right:0;background:rgba(255,255,255,.08)}
+.extbar .fil{min-width:14px;background:linear-gradient(90deg,#0a7f91,#00E0FF);box-shadow:0 0 10px rgba(0,224,255,.55)}
+.extbar .tks{position:absolute;left:7px;right:7px;top:21px;height:7px;background-image:repeating-linear-gradient(90deg,rgba(255,255,255,.18) 0 1.4px,transparent 1.4px 100%)}
+</style></head><body>
+<div class="wrap">
+
+  <div class="topbar">
+    <button class="status" id="namePill" title="Tap to connect, or to rename once connected">
+      <span class="dot" id="dot"></span>
+      <b id="stName">Ikape K2 · tap to connect</b>
+      <span class="pnote" id="pnote" aria-live="polite"></span>
+      <svg class="pencil" id="pencil" hidden viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4Z"/><path d="m13.5 6.5 4 4"/></svg>
+    </button>
+  </div>
+
+  <div class="app off" id="app">
+    <div class="stage" id="stage">
+      <div class="gauge" id="gauge">
+        <button class="gear" id="gear" aria-label="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg></button>
+        <div class="presets" id="presets">
+          <button class="pbtn" id="pbtn" aria-haspopup="true" aria-expanded="false" aria-label="Presets">
+            <span class="pname" id="pname"></span>
+            <svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <div class="pmenu" id="pmenu" hidden>
+            <div class="plist" id="plist"></div>
+            <div class="psave">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16v4Z"/></svg>
+              <input id="pinput" maxlength="20" autocomplete="off" aria-label="Preset name">
+              <button class="ibtn" id="psavebtn" aria-label="Save current settings as a preset"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v18l-6-4-6 4V3Z"/><path d="M12 7v6M9 10h6"/></svg></button>
+            </div>
+          </div>
+        </div>
+        <svg id="arcsvg" viewBox="0 0 300 500" preserveAspectRatio="xMaxYMid meet" aria-hidden="true">
+          <defs>
+            <linearGradient id="tempgrad" gradientUnits="userSpaceOnUse" x1="0" y1="14" x2="0" y2="486">
+              <stop offset="0" stop-color="#FF3B30"></stop>
+              <stop offset="0.34" stop-color="#FFC700"></stop>
+              <stop offset="0.64" stop-color="#8BE06B"></stop>
+              <stop offset="1" stop-color="#00E0FF"></stop>
+            </linearGradient>
+            <path id="tempLblPath"></path><path id="flowLblPath"></path><path id="soakLblPath"></path><path id="holdLblPath"></path>
+          </defs>
+          <g id="ticks"></g>
+          <path id="tempTrack" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="24" stroke-linecap="round"></path>
+          <path id="tempGhost" fill="none" stroke="rgba(255,255,255,0.22)" stroke-width="24" stroke-linecap="round"></path>
+          <path id="tempFill" fill="none" stroke="url(#tempgrad)" stroke-width="24" stroke-linecap="round"></path>
+          <g id="segs"></g>
+          <path id="soakTrack" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="12" stroke-linecap="round"></path>
+          <path id="soakFill" fill="none" stroke="#8BE06B" stroke-width="12" stroke-linecap="round" style="filter:drop-shadow(0 0 6px #8BE06B)"></path>
+          <path id="holdTrack" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="12" stroke-linecap="round"></path>
+          <path id="holdFill" fill="none" stroke="#FFC700" stroke-width="12" stroke-linecap="round" style="filter:drop-shadow(0 0 6px #FFC700)"></path>
+          <text class="lbl"><textPath href="#tempLblPath" startOffset="97%" text-anchor="end" id="tempLbl">Temp</textPath></text>
+          <text class="lbl"><textPath href="#flowLblPath" startOffset="97%" text-anchor="end" id="flowLbl">Flow</textPath></text>
+          <text class="lbl"><textPath href="#soakLblPath" startOffset="97%" text-anchor="end" id="soakLbl">Pre-soak</textPath></text>
+          <text class="lbl"><textPath href="#holdLblPath" startOffset="97%" text-anchor="end" id="holdLbl">Hold</textPath></text>
+          <g id="bubs"></g>
+          <foreignObject x="188" y="158" width="112" height="184">
+            <div xmlns="http://www.w3.org/1999/xhtml" class="center">
+              <div class="u">°C</div>
+              <div class="big" id="tval">--</div>
+              <div class="prof" id="prof">Custom</div>
+              <div class="read"><span id="cur" hidden="">--°</span><span class="batt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="2" y="8" width="16" height="10" rx="2"></rect><path d="M22 11v4" stroke-linecap="round"></path></svg><b id="bpct">--%</b><svg class="bolt" id="bolt" hidden="" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"></path></svg></span></div>
+              <div class="phase" id="phase" hidden=""></div>
+              <div class="timer" id="timer" hidden="" role="timer" aria-label="Brew time"></div>
+            </div>
+          </foreignObject>
+          <path id="tempHit" class="hit" fill="none" stroke="transparent" stroke-width="50" stroke-linecap="round"></path>
+          <path id="pressHit" class="hit" fill="none" stroke="transparent" stroke-width="34" stroke-linecap="round"></path>
+          <path id="soakHit" class="hit" fill="none" stroke="transparent" stroke-width="32" stroke-linecap="round"></path>
+          <path id="holdHit" class="hit" fill="none" stroke="transparent" stroke-width="32" stroke-linecap="round"></path>
+        </svg>
+      </div>
+
+      <div class="actions">
+        <div class="modes" id="modes">
+          <button class="mode heat" data-mode="heat" aria-label="Heat water">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3c2.5 3 4 5 4 7a4 4 0 0 1-8 0c0-2 1.5-4 4-7Z"></path><path d="M6 20h12"></path></svg></button>
+          <button class="mode both" data-mode="both" aria-label="Heat and extract">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2c1.8 2.2 3 3.8 3 5.3a3 3 0 0 1-6 0C9 5.8 10.2 4.2 12 2Z"></path><path d="M5 12h10v3a4.5 4.5 0 0 1-4.5 4.5H9.5A4.5 4.5 0 0 1 5 15v-3Z"></path><path d="M15 13h1.5a1.8 1.8 0 0 1 0 3.6H15"></path></svg></button>
+          <button class="mode purge" data-mode="purge" aria-label="Purge: 30 s of water, no heating">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h14"></path><path d="M8 4v2M16 4v2"></path><path d="M6 6h12v2H6z"></path><path d="M8 12v3M12 12v6M16 12v3"></path><path d="M8 19v1M16 19v1"></path></svg></button>
+          <button class="mode extract" data-mode="extract" aria-label="Extract">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8h11v4a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5V8Z"></path><path d="M16 9h2a2 2 0 0 1 0 4h-2"></path><path d="M8 3v2M11 3v2"></path><path d="M7 21h8"></path></svg></button>
+        </div>
+        <button class="stopbtn" id="stop" hidden aria-label="Stop">
+          <svg viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="3.5"></rect></svg>
+        </button>
+      </div>
+
+      <div class="ext" id="row-ext">
+        <div class="lab"><span>Extraction</span><b id="v-ext">--</b></div>
+        <div class="extbar" id="extbar" role="slider" aria-label="Extraction seconds"><div class="trk"></div><div class="fil" id="extfil"></div><div class="tks" id="extticks"></div></div>
+      </div>
+    </div>
+  </div>
+
+
+  <div class="sheet" id="settings" hidden role="dialog" aria-label="Settings">
+    <div class="shead"><b>Settings</b>
+      <button class="ibtn" id="sclose" aria-label="Close settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    </div>
+    <div class="sset">
+      <div class="lab"><span>Water temp offset</span><b id="v-off">0°C</b></div>
+      <div class="extbar" id="offbar" role="slider" aria-label="Water temperature offset" aria-valuemin="-10" aria-valuemax="10" aria-valuenow="0"><div class="trk"></div><div class="fil" id="offfil"></div><div class="zero"></div><div class="tks" style="background-size:5% 100%"></div></div>
+      <p>Drag to match a thermometer: every water temperature in the app, presets and widget shifts by this, and the setpoint sent to the machine is corrected to match.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // Gauge geometry (viewBox 300x500): one centre off the right edge; Temp, Flow, Pre-soak, Hold from outside in.
+  var VW=300,VH=500,CX=330,CY=250,R1=285,R2=232,RS=190,RH=150,A_BOT=124,A_TOP=236,SPAN=A_TOP-A_BOT;
+  // Device-reported values (PROTOCOL.md §4.3). Defaults until the replies land.
+  var TMIN=38,TMAX=96,target=92,cur=null,batt=null;
+  // params from 0x17: {soak,stand,ext:[value,min,max]|null}. Placeholders until the machine reports its own,
+  // so the greyed-out preview before connecting shows the complete UI.
+  var pLevel=2,FMIN=0,FMAX=2,params={soak:[5,0,10],stand:[3,0,10],ext:[60,30,250]},live=false;
+  // Last values the machine reported (machine scale, °C before the offset), remembered on this phone and used
+  // as the placeholders next time. Written on every 0x15 / 0x17 reply.
+  function rememberState(){if(!live)return;try{localStorage.setItem('k2-state',JSON.stringify({t:[TMIN-off,TMAX-off,Math.round(target)-off],
+    f:[FMIN,FMAX,FMIN+pLevel-1],soak:params.soak,stand:params.stand,ext:params.ext}));}catch(e){}}
+  function restoreState(){var st=null;try{st=JSON.parse(localStorage.getItem('k2-state'));}catch(e){}
+    if(!st||!st.t||!st.f||!st.soak||!st.stand)return;
+    var n=function(v){return typeof v==='number'&&isFinite(v);},tri=function(a){return Array.isArray(a)&&a.length===3&&a.every(n);};
+    if(!tri(st.t)||!tri(st.f)||!tri(st.soak)||!tri(st.stand)||(st.ext!==null&&!tri(st.ext)))return;
+    if(st.t[1]>st.t[0]){TMIN=st.t[0]+off;TMAX=st.t[1]+off;target=Math.max(TMIN,Math.min(TMAX,st.t[2]+off));}
+    FMIN=st.f[0];FMAX=st.f[1];pLevel=Math.max(1,Math.min(3,st.f[2]-FMIN+1));
+    params={soak:st.soak.slice(),stand:st.stand.slice(),ext:st.ext?st.ext.slice():null};}
+  var mode=null,state=0,connected=false;
+  // Water temp offset (Settings): shown = machine + off. Stored on this phone.
+  var off=0;try{off=Math.max(-10,Math.min(10,Math.round(+localStorage.getItem('k2-offset'))||0));}catch(e){}
+
+  /* ---------- protocol (PROTOCOL.md §4–5) ---------- */
+  var SVC=0xfff0,TX_UUID=0xfff2,RX_UUID=0xfff1;
+  var C={STATE:0x00,WORK:0x02,TIME:0x04,CUPS:0x06,INFO:0x08,GET_TEMP:0x15,SET_TEMP:0x16,GET_PARAM:0x17,SET_PARAM:0x18,GET_APPT:0x24};
+  var MODE_IDX={heat:0,both:1,extract:2};
+  // reply byte 4 of 0x00 -> PcmDeviceState; running states map back to a UI mode
+  var STATES=['standby','hotExtractioning','hotExtractionComplete','coldExtractioning','coldExtractionComplete','hotWatering','hotWaterComplete'];
+  var EVENTS={0:'Stopped',1:'Heat & extract started',2:'Brew done',3:'Extraction started',4:'Brew done',5:'Heating water',6:'Water ready'},seenState=false,lastCharge=null;
+  var STATE_MODE={1:'both',3:'extract',5:'heat'};
+  var ERRORS=[null,'Error 01: dry burning, add water','Error 02: battery hot, wait before operating',
+    'Error 03: heater short circuit','Error 04: low battery, charge soon','Error 05: low battery, charge soon'];
+
+  function frame(cmd,data){data=data||[];var n=data.length+5,b=[0x7F,n>>8&255,n&255,0,cmd].concat(data);
+    b[3]=b.reduce(function(s,v){return s+v;},0)&255;return new Uint8Array(b);}
+
+  var dev=null,write=null,q=Promise.resolve(),rxBuf=[];
+  function wait(ms){return new Promise(function(r){setTimeout(r,ms);});}
+  // Writes are serialized with the app's 40 ms gap. `write` is Web Bluetooth or the APK's native bridge.
+  function send(cmd,data){var f=frame(cmd,data),w=write;
+    q=q.then(function(){if(w)return w(f);})
+      .then(function(){return wait(40);})
+      .catch(function(e){console.warn('tx failed',e);});
+    return q;}
+
+  function onNotify(e){var v=e.target.value;feed(new Uint8Array(v.buffer,v.byteOffset,v.byteLength));}
+  // BleFrameDecoder: scan for 0x7E, LEN = ((b1&0x3F)<<8)|b2, whole frame incl. header.
+  var badFrames=0;
+  function feed(bytes){for(var i=0;i<bytes.length;i++)rxBuf.push(bytes[i]&255);
+    if(rxBuf.length>4096)rxBuf=rxBuf.slice(-4096); // never more than one max-size frame of backlog
+    for(;;){var h=rxBuf.indexOf(0x7E);if(h<0){rxBuf=[];return;}if(h)rxBuf=rxBuf.slice(h);
+      if(rxBuf.length<3)return;var n=((rxBuf[1]&0x3F)<<8)|rxBuf[2];
+      if(n<5||n>=4096){rxBuf.shift();continue;}
+      if(rxBuf.length<n)return;
+      var f=rxBuf.slice(0,n);rxBuf=rxBuf.slice(n);
+      var s=0;for(var k=0;k<n;k++)if(k!==3)s+=f[k];
+      // HappyGo acts on frames with a bad checksum; this app drops them: a flipped state or temperature
+      // byte would otherwise move the UI (or the brew timers) on garbage.
+      if((s&255)!==f[3]){badFrames++;console.warn('rx checksum mismatch, dropped',hex(f));continue;}
+      onFrame(f[4],f.slice(5));}}
+  function hex(a){return Array.prototype.map.call(a,function(x){return(x<16?'0':'')+x.toString(16);}).join(' ');}
+
+  function onFrame(cmd,d){
+    if(cmd===C.STATE&&d.length>=6){
+      batt=d[1]&0x7F;document.getElementById('bolt').toggleAttribute('hidden',!(d[2]&0xC0)); // SVG: no .hidden property in WebView
+      var ch=d[2]&0x40?'Fully charged':d[2]&0x80?'Charging':'Unplugged';
+      if(lastCharge!==null&&ch!==lastCharge)toast(ch);lastCharge=ch;
+      var was=state;cur=d[3]+off;state=d[4];trackBrew();trackRun(was);
+      // "Stopped" only when leaving a running state; done -> standby is the machine settling, not news.
+      if(seenState&&was!==state&&EVENTS[state]&&!(state===0&&!(was in STATE_MODE)))toast(EVENTS[state]);seenState=true;
+      var m=STATE_MODE[state]||null;if(m!==mode){mode=m;syncModeUI();}
+      showError(ERRORS[d[5]]||null);renderReadout();renderTimers();
+      // A purge ran with 0/0/30 s; once extraction stops, put the user's settings back.
+      if(purgeRestore&&was===3&&state!==3){purgeRestore=null;applyRestore();}
+    }else if(cmd===C.GET_TEMP&&d.length>=3){
+      // The K2 reports its preset and range in °F (100..204 = 38..96 °C); state temps are °C.
+      if(d[1]<=d[0])return; // not a usable range; keep the last good one
+      gotTemp=true;
+      TMIN=f2c(d[0])+off;TMAX=f2c(d[1])+off;if(!drag)target=clampT(f2c(d[2])+off);renderTemp();
+      // The K2 keeps whole °C and reports floor(°C×1.8+32): sending 198 °F (92 °C) reads back 197.
+      // So compare in °C, not the raw °F byte.
+      verify('temp',f2c(d[2])+off);updatePName();rememberState();
+    }else if(cmd===C.GET_PARAM&&d.length>=7){
+      if(d.length>11){FMIN=d[10];FMAX=d[11];}
+      var old=live?params:null,first=!live;live=true;app.classList.remove('stale');
+      params={soak:[d[1],d[2],d[3]],stand:[d[4],d[5],d[6]],ext:d.length>9?[d[7],d[8],d[9]]:null};
+      if(old&&drag&&old[drag.k])params[drag.k][0]=old[drag.k][0];
+      if(old&&extDrag!==null&&old.ext&&params.ext)params.ext[0]=old.ext[0];
+      renderTimers();renderExt();
+      if(!drag)pLevel=Math.max(1,Math.min(3,d[0]-FMIN+1));renderSegs();
+      var got=[d[0],d[1],d[4]].concat(d.length>9?[d[7]]:[]);verify('param',got.join());lastParam=got;
+      updatePName(); // after pLevel above, so the match sees this reply's flow
+      rememberState();
+      if(first&&restorePending()&&!(state in STATE_MODE))applyRestore();
+      if(autoApply){autoApply=false;var lp=lastP();if(lp){remember(lp);if(!same(lp,nowP()))applyPreset(lp);}}
+    }}
+
+  // Read-back check: after a set, the matching get must return what we sent (as HappyGo's _save does).
+  var pend={};
+  function expect(key,want,set,query,name){if(pend[key])clearTimeout(pend[key].t);
+    pend[key]={want:String(want),set:set,query:query,name:name,tries:0,
+      t:setTimeout(function(){delete pend[key];toast(name+': no reply',true);},4000)};}
+  function verify(key,got){var p=pend[key];if(!p)return;
+    if(String(got)===p.want){clearTimeout(p.t);delete pend[key];toast(p.name+' saved');}
+    // The K2 sometimes drops a write without echoing it, so mismatch -> send the set again.
+    else if(++p.tries<4)setTimeout(function(){send(p.set[0],p.set[1]);send(p.query);},300);
+    else{clearTimeout(p.t);delete pend[key];toast(p.name+' not accepted',true);}}
+  var nq=[],nBusy=false;
+  function toast(msg,bad){nq.push([msg,bad]);if(nq.length>6)nq.shift();if(!nBusy)nextNote();}
+  function nextNote(){var el=document.getElementById('pnote'),n=nq.shift();
+    if(!n){nBusy=false;el.textContent='';el.className='pnote';return;}
+    nBusy=true;el.textContent=n[0];el.className='pnote'+(n[1]?' bad':'');
+    void el.offsetWidth;el.classList.add('show');setTimeout(nextNote,1000);}
+
+  function setTime(){var t=new Date(),wd=t.getDay()||7;
+    return send(C.TIME,[wd,t.getMonth()+1,t.getDate(),t.getFullYear()-2020,t.getHours(),t.getMinutes(),t.getSeconds()]);}
+  function sendTemp(){if(heatingNow())return; // the app skips 0x16 while heating
+    var f=c2f(target-off)&255; /* machine scale */expect('temp',Math.round(target),[C.SET_TEMP,[f]],C.GET_TEMP,'Temp '+Math.round(target)+'°C');send(C.SET_TEMP,[f]);send(C.GET_TEMP);}
+  var lastParam=null,FIELDS=['Flow','Pre-soak','Hold','Extraction'];
+  function describe(d){var parts=d.map(function(v,i){if(lastParam&&lastParam[i]===v)return null;
+      return FIELDS[i]+' '+(i?v+'s':(SPEEDS[v-FMIN]||v));}).filter(Boolean);
+    return parts.length?parts.join(' · '):'Brew settings';}
+  function f2c(f){return Math.round((f-32)/1.8);}
+  function c2f(c){return Math.round(c*1.8+32);}
+  // 0x18 always carries every field, so flow and the brew card share one sender.
+  function sendFlow(){if(!live)return;var flow=Math.min(FMAX,FMIN+pLevel-1),
+    d=[flow,params.soak[0],params.stand[0]];if(params.ext)d.push(params.ext[0]);
+    expect('param',d.join(),[C.SET_PARAM,d],C.GET_PARAM,describe(d));send(C.SET_PARAM,d);send(C.GET_PARAM);}
+  function sendWork(m,start){send(C.WORK,[MODE_IDX[m],start?1:0]);send(C.STATE);}
+
+  /* ---------- UI ---------- */
+  function $(id){return document.getElementById(id);}
+  function capture(el,e){try{el.setPointerCapture(e.pointerId);}catch(x){}}
+  function rad(d){return d*Math.PI/180;}
+  function polar(r,deg){return {x:CX+r*Math.cos(rad(deg)),y:CY+r*Math.sin(rad(deg))};}
+  function arcPath(r,d1,d2){var a=polar(r,d1),b=polar(r,d2),l=(Math.abs(d2-d1)>180)?1:0;
+    return "M "+a.x.toFixed(1)+" "+a.y.toFixed(1)+" A "+r+" "+r+" 0 "+l+" 1 "+b.x.toFixed(1)+" "+b.y.toFixed(1);}
+  function arcTo(r,f){return f<=0.001?'':arcPath(r,A_BOT,A_BOT+Math.min(1,f)*SPAN);}
+  function setD(id,d){$(id).setAttribute('d',d);}
+  function haptic(p){try{if(navigator.vibrate)navigator.vibrate(p);}catch(e){}}
+  function heatingNow(){return state===1||state===5;}
+  function heating(){return connected&&(mode==='heat'||mode==='both');}
+
+  [['tempTrack',R1],['soakTrack',RS],['holdTrack',RH],['tempHit',R1],['pressHit',R2],['soakHit',RS],['holdHit',RH],
+   ].forEach(function(x){setD(x[0],arcPath(x[1],A_BOT,A_TOP));});
+  // Temp label sits inside the outer ring near its top end, running upward so it reads upright there.
+  // Every label: outer (left) side of its meter, at the bottom; runs top to bottom (reversed arc) so it reads upright.
+  [['tempLblPath',R1+25],['flowLblPath',R2+26],['soakLblPath',RS+24],['holdLblPath',RH+24]].forEach(function(x){var a=polar(x[1],A_TOP),b=polar(x[1],A_BOT);
+    setD(x[0],'M '+a.x.toFixed(1)+' '+a.y.toFixed(1)+' A '+x[1]+' '+x[1]+' 0 0 0 '+b.x.toFixed(1)+' '+b.y.toFixed(1));});
+  (function(){var g=$('ticks'),s="";
+    for(var d=A_BOT+24;d<=A_TOP+4;d+=3.2){var a=polar(R1+17,d),b=polar(R1+25,d); // bottom 28° left for the Temp label
+      s+='<line x1="'+a.x.toFixed(1)+'" y1="'+a.y.toFixed(1)+'" x2="'+b.x.toFixed(1)+'" y2="'+b.y.toFixed(1)+'" stroke="rgba(255,255,255,0.16)" stroke-width="1.4"/>';}
+    g.innerHTML=s;})();
+
+  var segG=$('segs'),SPEEDS=['Low','Medium','High'];
+  var gap=7,each=(SPAN-2*gap)/3;
+  function segRange(i){var d1=A_BOT+i*(each+gap);return [d1,d1+each];}
+  function renderSegs(){var s="";
+    for(var i=0;i<3;i++){var rg=segRange(i),lit=i<pLevel;
+      s+='<path class="seg'+(lit?' lit':'')+'" d="'+arcPath(R2,rg[0],rg[1])+'" fill="none" stroke="'+(lit?'#00E0FF':'rgba(255,255,255,0.14)')+'" stroke-width="14" stroke-linecap="round"/>';}
+    segG.innerHTML=s;$('flowLbl').textContent='Flow · '+SPEEDS[pLevel-1];}
+
+  // Temperature meter: fills to the preset. While the machine heats, the preset part turns grey and the
+  // colour climbs with the real water temperature; the big number counts up with it.
+  var tval=$('tval');
+  function tf(t){return (t-TMIN)/(TMAX-TMIN);}
+  function warming(){return connected&&heatingNow()&&cur!==null&&cur<target-1;}
+  // While heating, the fill and number glide toward each new reading (curShown eases in the frame loop).
+  var curShown=null;
+  function fillTemp(){return warming()?(curShown===null?cur:curShown):target;}
+  function renderTemp(){var w=warming();
+    setD('tempGhost',w?arcTo(R1,tf(target)):'');
+    setD('tempFill',arcTo(R1,tf(fillTemp())));
+    // Big number: the actual water temperature (eased while heating); the preset is on the arc label.
+    tval.textContent=cur===null?'--':Math.round(w?fillTemp():cur);$('tempLbl').textContent='Temp · '+Math.round(target)+'°';}
+  function clampT(v){return Math.max(TMIN,Math.min(TMAX,Math.round(v)));}
+  function renderReadout(){
+    $('cur').textContent=cur===null?'--°':cur+'°';
+    $('bpct').textContent=batt===null?'--%':batt+'%';
+    renderTemp();}
+
+  // Elapsed brew timer: from the machine's first running state to its end (any mode); the final time
+  // stays for 10 s or until tapped, like the widget.
+  var runT0=null,runDone=null;
+  function trackRun(was){var wasRun=was in STATE_MODE,isRun=state in STATE_MODE;
+    if(isRun&&!wasRun){runT0=Date.now();runDone=null;}
+    else if(!isRun&&wasRun&&runT0!==null&&runDone===null)runDone=Date.now();}
+  function renderRun(){var tm=$('timer');
+    if(runT0===null||(runDone!==null&&Date.now()-runDone>10000)){runT0=null;runDone=null;tm.hidden=true;return;}
+    var el=Math.floor(((runDone||Date.now())-runT0)/1000);
+    tm.hidden=false;tm.textContent=Math.floor(el/60)+':'+('0'+el%60).slice(-2);tm.classList.toggle('done',runDone!==null);}
+  $('timer').addEventListener('click',function(){if(runDone!==null){runT0=null;runDone=null;renderRun();}});
+
+  // Pre-soak and Hold meters. During a brew they count down.
+  // ponytail: the K2 only reports "extracting", not the phase, so the countdown is timed from the settings.
+  // Extract starts the clock at once; Heat & Extract starts it when the water reaches the preset.
+  var brewT0=null,brewEnd=false;
+  function brewing(){return brewT0!==null&&!brewEnd;}
+  function trackBrew(){
+    if(state===3||(state===1&&cur!==null&&cur>=target-2)){if(brewT0===null){brewT0=Date.now();brewEnd=false;}}
+    else if(state===2||state===4){if(brewT0!==null)brewEnd=true;}
+    else if(state!==1){brewT0=null;brewEnd=false;}}
+  function timerVal(k){var p=params[k];if(!brewing())return p[0];
+    var el=(Date.now()-brewT0)/1000,s=params.soak[0];
+    return Math.max(0,Math.ceil(k==='soak'?s-el:params.stand[0]-Math.max(0,el-s)));}
+  function renderTimers(){
+    [['soak',RS,'soakFill','soakLbl','Pre-soak'],['stand',RH,'holdFill','holdLbl','Hold']].forEach(function(x){
+      var p=params&&params[x[0]];if(!p){setD(x[2],'');$(x[3]).textContent=x[4];return;}
+      var v=timerVal(x[0]);setD(x[2],arcTo(x[1],(v-p[1])/((p[2]-p[1])||1)));
+      $(x[3]).textContent=x[4]+' · '+v+'s'+(brewing()?' left':'');});
+    renderRun();
+    var ph=$('phase');
+    if(brewT0===null){ph.hidden=true;return;}
+    ph.hidden=false;
+    if(brewEnd){ph.textContent='Brew done';return;}
+    var el=(Date.now()-brewT0)/1000,s=params?params.soak[0]:0,h=params?params.stand[0]:0;
+    ph.textContent=el<s?'Pre-soak':el<s+h?'Hold':'Extracting…';}
+  setInterval(renderTimers,250);
+
+  // Extraction: straight bar, steps of 10 s, sends once on release.
+  var extbar=$('extbar'),extDrag=null;
+  function renderExt(){var p=params&&params.ext;$('row-ext').hidden=!!params&&!p;
+    if(!p){$('v-ext').textContent='--';return;}
+    var f=(p[0]-p[1])/((p[2]-p[1])||1);
+    $('extfil').style.width='calc(14px + '+(f*100)+'% - '+(f*14)+'px)';
+    $('v-ext').textContent=p[0]+'s';extbar.setAttribute('aria-valuemin',p[1]);extbar.setAttribute('aria-valuemax',p[2]);extbar.setAttribute('aria-valuenow',p[0]);
+    $('extticks').style.backgroundSize=(100/Math.max(1,Math.round((p[2]-p[1])/10)))+'% 100%';}
+  function extAt(e){var p=params.ext,r=extbar.getBoundingClientRect(),
+      f=Math.max(0,Math.min(1,(e.clientX-r.left-7)/(r.width-14))),
+      v=Math.max(p[1],Math.min(p[2],p[1]+Math.round(f*(p[2]-p[1])/10)*10));
+    if(v!==p[0]){p[0]=v;renderExt();haptic(6);}}
+  extbar.addEventListener('pointerdown',function(e){if(!connected||!live||!params.ext)return;
+    extDrag=params.ext[0];capture(extbar,e);extAt(e);});
+  extbar.addEventListener('pointermove',function(e){if(extDrag!==null)extAt(e);});
+  function extUp(){if(extDrag===null)return;if(params.ext[0]!==extDrag)sendFlow();extDrag=null;updatePName();}
+  extbar.addEventListener('pointerup',extUp);extbar.addEventListener('pointercancel',extUp);
+
+  // Arc meters: each has a wide invisible .hit stroke; drag along it, send once on release.
+  var svg=$('arcsvg'),drag=null,tDirty=false;
+  function toVB(e){var r=svg.getBoundingClientRect(),sc=Math.min(r.width/VW,r.height/VH),
+      ox=r.right-VW*sc,oy=r.top+(r.height-VH*sc)/2; // preserveAspectRatio xMaxYMid meet
+    var x=(e.clientX-ox)/sc,y=(e.clientY-oy)/sc,a=Math.atan2(y-CY,x-CX)*180/Math.PI;if(a<0)a+=360;return {a:a};}
+  function angF(v){return (Math.max(A_BOT,Math.min(A_TOP,v.a))-A_BOT)/SPAN;}
+  function applyTemp(v){var t=clampT(TMIN+angF(v)*(TMAX-TMIN));if(t!==target){target=t;tDirty=true;renderTemp();}}
+  function applyPress(v){var lv=Math.max(1,Math.min(3,Math.floor(angF(v)*3)+1));if(lv!==pLevel){pLevel=lv;renderSegs();haptic(10);}}
+  function applyTimer(k,v){var p=params[k],n=Math.round(p[1]+angF(v)*(p[2]-p[1]));if(n!==p[0]){p[0]=n;renderTimers();haptic(6);}}
+  function apply(v){if(drag.k==='t')applyTemp(v);else if(drag.k==='p')applyPress(v);else applyTimer(drag.k,v);}
+  var HITS={tempHit:'t',pressHit:'p',soakHit:'soak',holdHit:'stand'};
+  function grab(k,e){if(!connected)return;
+    if(k==='t'&&heatingNow()){toast('Temperature is locked while heating',true);return;}
+    if(k!=='t'&&!live)return;
+    if((k==='soak'||k==='stand')&&brewing()){toast('Locked while brewing',true);return;}
+    drag={k:k,before:k==='t'?target:k==='p'?pLevel:params[k][0]};
+    capture(e.target,e);apply(toVB(e));haptic(8);}
+  Object.keys(HITS).forEach(function(id){var h=$(id);
+    h.addEventListener('touchstart',function(e){e.preventDefault();},{passive:false});
+    h.addEventListener('pointerdown',function(e){grab(HITS[id],e);});});
+  window.addEventListener('pointermove',function(e){if(drag)apply(toVB(e));});
+  function release(){if(!drag)return;
+    if(drag.k==='t'){if(tDirty)sendTemp();}
+    else if((drag.k==='p'?pLevel:params[drag.k][0])!==drag.before)sendFlow();
+    drag=null;tDirty=false;updatePName();}
+  window.addEventListener('pointerup',release);
+  window.addEventListener('pointercancel',release);
+
+  /* ---------- presets (stored on this phone) ---------- */
+  var DEL='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>';
+  function isNum(v){return typeof v==='number'&&isFinite(v);}
+  function validP(p){return !!p&&typeof p.n==='string'&&p.n.length>0&&p.n.length<=20&&isNum(p.t)&&isNum(p.f)&&isNum(p.s)&&isNum(p.h)&&(p.e===null||isNum(p.e));}
+  function loadP(){try{var a=JSON.parse(localStorage.getItem('k2-presets'));return Array.isArray(a)?a.filter(validP):[];}catch(e){return [];}}
+  // First run: one preset with the K2's factory settings, used until something else is chosen.
+  var DEFAULT_P={n:'Default',t:95,f:2,s:7,h:7,e:250};
+  (function(){try{if(localStorage.getItem('k2-seeded'))return;localStorage.setItem('k2-seeded','1');
+    if(!loadP().length){storeP([DEFAULT_P]);localStorage.setItem('k2-last',DEFAULT_P.n);}}catch(e){}})();
+  function storeP(a){try{localStorage.setItem('k2-presets',JSON.stringify(a));}catch(e){}}
+  function nowP(){return live?{t:Math.round(target),f:FMIN+pLevel-1,s:params.soak[0],h:params.stand[0],e:params.ext?params.ext[0]:null}:null;}
+  function same(p,c){return !!c&&p.t===c.t&&p.f===c.f&&p.s===c.s&&p.h===c.h&&(p.e===null||p.e===c.e);}
+  function activeP(){var c=nowP();return loadP().filter(function(p){return same(p,c);})[0]||null;}
+  // Button width stops before the outer ring's ticks at that height; long names shrink to 10px, then ellipsis.
+  function fitPresets(){var b=$('pbtn'),nm=$('pname'),g=$('gauge').getBoundingClientRect(),r=svg.getBoundingClientRect(),
+      sc=Math.min(r.width/VW,r.height/VH),ox=r.right-VW*sc,oy=r.top+(r.height-VH*sc)/2,
+      y=(g.top+b.offsetHeight+6-oy)/sc,R=R1+25,dy=y-CY,
+      x=Math.abs(dy)<R?CX-Math.sqrt(R*R-dy*dy):VW;
+    b.style.maxWidth=Math.max(64,ox+x*sc-g.left-10)+'px';
+    var fs=15;nm.style.fontSize=fs+'px';
+    while(fs>10&&nm.scrollWidth>nm.clientWidth){fs--;nm.style.fontSize=fs+'px';}}
+  function updatePName(){var a=activeP(),n=a?a.n:'Custom';$('pname').textContent=n;$('prof').textContent=n;fitPresets();}
+  function renderPresets(){var list=loadP(),c=nowP();
+    $('plist').innerHTML=list.map(function(p,i){
+      return '<div class="prow'+(same(p,c)?' on':'')+'" data-i="'+i+'"><span class="nm"></span>'+
+        '<button class="ibtn" data-del="'+i+'" aria-label="Delete preset">'+DEL+'</button></div>';}).join('');
+    Array.prototype.forEach.call($('plist').querySelectorAll('.nm'),function(el,i){el.textContent=list[i].n;}); // names as text, never HTML
+    updatePName();}
+  function menu(open){$('pmenu').hidden=!open;$('pbtn').setAttribute('aria-expanded',open);if(open)renderPresets();}
+  // Last-used profile: remembered on this phone, re-applied on connect, and handed to the widget.
+  function remember(p){try{p?localStorage.setItem('k2-last',p.n):localStorage.removeItem('k2-last');}catch(e){}
+    if(window.AndroidBle&&AndroidBle.setProfile)AndroidBle.setProfile(p?JSON.stringify(p):'');}
+  function lastP(){var n=null;try{n=localStorage.getItem('k2-last');}catch(e){}
+    return n?loadP().filter(function(p){return p.n===n;})[0]||null:null;}
+  function applyPreset(p){if(!connected||!live){toast('Connect first',true);return;}
+    remember(p);
+    toast('Preset '+p.n);
+    if(Math.round(target)!==p.t){if(heatingNow())toast('Temperature is locked while heating',true);
+      else{target=clampT(p.t);renderTemp();sendTemp();}}
+    pLevel=Math.max(1,Math.min(3,p.f-FMIN+1));
+    params.soak[0]=Math.max(params.soak[1],Math.min(params.soak[2],p.s));
+    params.stand[0]=Math.max(params.stand[1],Math.min(params.stand[2],p.h));
+    if(params.ext&&p.e!==null)params.ext[0]=Math.max(params.ext[1],Math.min(params.ext[2],p.e));
+    renderSegs();renderTimers();renderExt();sendFlow();updatePName();}
+  function savePreset(){var n=$('pinput').value.trim();if(!n){$('pinput').focus();return;}
+    var c=nowP();if(!connected||!c){toast('Connect first',true);return;}
+    c.n=n;var list=loadP().filter(function(p){return p.n!==n;});list.push(c);storeP(list);
+    remember(c);$('pinput').value='';$('pinput').blur();renderPresets();toast('Preset '+n+' saved');}
+  $('pbtn').addEventListener('click',function(){menu($('pmenu').hidden);});
+  $('psavebtn').addEventListener('click',savePreset);
+  $('pinput').addEventListener('keydown',function(e){if(e.key==='Enter')savePreset();});
+  $('plist').addEventListener('click',function(e){var d=e.target.closest('[data-del]'),list=loadP();
+    if(d){var gone=list.splice(+d.dataset.del,1)[0];storeP(list);renderPresets();if(gone){toast('Preset '+gone.n+' deleted');if(!lastP())remember(null);}return;}
+    var row=e.target.closest('.prow');if(row){applyPreset(list[+row.dataset.i]);menu(false);}});
+  document.addEventListener('pointerdown',function(e){if(!$('pmenu').hidden&&!$('presets').contains(e.target))menu(false);});
+  window.addEventListener('resize',fitPresets);
+
+  /* ---------- settings ---------- */
+  var OFFMAX=10,offDrag=null;
+  function renderOff(){$('v-off').textContent=(off>0?'+':'')+off+'°C';offbar.setAttribute('aria-valuenow',off);
+    var f=off/OFFMAX/2,fil=$('offfil');            // -0.5..0.5 of the bar, from the centre
+    fil.style.left=(f<0?50+f*100:50)+'%';fil.style.width=Math.abs(f*100)+'%';fil.style.minWidth='0';}
+  function setOffset(n,quiet){n=Math.max(-OFFMAX,Math.min(OFFMAX,Math.round(n)));var d=n-off;
+    if(d){off=n;try{localStorage.setItem('k2-offset',off);}catch(e){}
+      target+=d;TMIN+=d;TMAX+=d;if(cur!==null)cur+=d;if(curShown!==null)curShown+=d;
+      if(window.AndroidBle&&AndroidBle.setOffset)AndroidBle.setOffset(off);
+      renderReadout();updatePName();}
+    renderOff();if(!quiet&&d)toast('Offset '+(off>0?'+':'')+off+'°C');}
+  var offbar=$('offbar');
+  function offAt(e){var r=offbar.getBoundingClientRect(),f=Math.max(0,Math.min(1,(e.clientX-r.left)/r.width));setOffset(-OFFMAX+f*2*OFFMAX,true);}
+  offbar.addEventListener('pointerdown',function(e){offDrag=off;capture(offbar,e);offAt(e);});
+  offbar.addEventListener('pointermove',function(e){if(offDrag!==null)offAt(e);});
+  function offUp(){if(offDrag===null)return;if(off!==offDrag)toast('Offset '+(off>0?'+':'')+off+'°C');offDrag=null;}
+  offbar.addEventListener('pointerup',offUp);offbar.addEventListener('pointercancel',offUp);
+  $('gear').addEventListener('click',function(){renderOff();$('settings').hidden=false;});
+  $('sclose').addEventListener('click',function(){$('settings').hidden=true;});
+
+
+
+  var modesEl=document.getElementById('modes'),stopEl=document.getElementById('stop');
+  function syncModeUI(){var active=mode!==null;modesEl.hidden=active;stopEl.hidden=!active;}
+  var purgeRestore=null;
+  function saveRestore(r){try{r?localStorage.setItem('k2-purge-restore',JSON.stringify(r)):localStorage.removeItem('k2-purge-restore');}catch(e){}
+    if(window.AndroidBle&&AndroidBle.setRestore)AndroidBle.setRestore(r?JSON.stringify({f:r.f,s:r.soak,h:r.stand,e:r.ext}):'');}
+  function restorePending(){var r=null;
+    try{r=JSON.parse(localStorage.getItem('k2-purge-restore'));}catch(e){}
+    if(!r&&window.AndroidBle&&AndroidBle.pendingRestore){try{var j=JSON.parse(AndroidBle.pendingRestore()||'null');if(j)r={f:j.f,soak:j.s,stand:j.h,ext:j.e===undefined?null:j.e};}catch(e){}}
+    return r&&typeof r.soak==='number'&&typeof r.stand==='number'?r:null;}
+  function applyRestore(){var r=restorePending();if(!r||!live)return;saveRestore(null);
+    if(typeof r.f==='number')pLevel=Math.max(1,Math.min(3,r.f-FMIN+1));
+    params.soak[0]=Math.max(params.soak[1],Math.min(params.soak[2],r.soak));
+    params.stand[0]=Math.max(params.stand[1],Math.min(params.stand[2],r.stand));
+    if(params.ext&&r.ext!==null)params.ext[0]=Math.max(params.ext[1],Math.min(params.ext[2],r.ext));
+    renderSegs();renderTimers();renderExt();sendFlow();toast('Settings restored after purge');}
+  function purge(){if(!connected||!live||mode)return;
+    purgeRestore={f:FMIN+pLevel-1,soak:params.soak[0],stand:params.stand[0],ext:params.ext?params.ext[0]:null};
+    saveRestore(purgeRestore);
+    params.soak[0]=params.soak[1];params.stand[0]=params.stand[1];
+    if(params.ext)params.ext[0]=Math.max(params.ext[1],Math.min(params.ext[2],30));
+    renderTimers();renderExt();sendFlow();
+    sendWork('extract',true);mode='extract';syncModeUI();toast('Purge: 30 s of water');haptic([10,30,10]);}
+  function setMode(m){if(!connected)return;
+    if(m==='purge'){purge();return;}
+    if(mode!==m&&(m==='heat'||m==='both')&&batt!==null&&batt<18)
+      toast('Battery under 18%: heating may not finish, extraction still works',true);
+    if(mode===m){sendWork(m,false);mode=null;}else{sendWork(m,true);mode=m;}
+    syncModeUI();haptic(mode?[10,30,10]:12);}
+  document.querySelectorAll('.mode').forEach(function(btn){btn.addEventListener('click',function(){setMode(btn.dataset.mode);});});
+  stopEl.addEventListener('click',function(){if(mode)setMode(mode);});
+
+  // Machine errors go to the name bar, once each time the error code changes.
+  var lastErr=null;
+  function showError(msg){if(msg&&msg!==lastErr)toast(msg,true);lastErr=msg;}
+
+  // bubbles rise from the top of the fill while heating
+  var bubs=document.getElementById('bubs'),pool=[];
+  function colorAt(f){var stops=[[0,[0,224,255]],[0.36,[139,224,107]],[0.66,[255,199,0]],[1,[255,59,48]]];
+    for(var i=1;i<stops.length;i++){if(f<=stops[i][0]){var a=stops[i-1],b=stops[i],t=(f-a[0])/(b[0]-a[0]);
+      return 'rgb('+((a[1][0]+(b[1][0]-a[1][0])*t)|0)+','+((a[1][1]+(b[1][1]-a[1][1])*t)|0)+','+((a[1][2]+(b[1][2]-a[1][2])*t)|0)+')';}}
+    return 'rgb(255,59,48)';}
+  function spawn(){var f=Math.max(0,Math.min(1,tf(fillTemp()))),p=polar(R1,A_BOT+f*SPAN);var c=document.createElementNS('http://www.w3.org/2000/svg','circle');
+    var o={el:c,x:p.x,y:p.y,vx:(Math.random()-0.5)*0.5,vy:-(0.7+Math.random()*0.9),r:2+Math.random()*4,life:0,max:40+Math.random()*30};
+    c.setAttribute('cx',p.x);c.setAttribute('cy',p.y);c.setAttribute('fill',colorAt(f));bubs.appendChild(c);pool.push(o);}
+  var acc=0,last=0;
+  function loop(ts){requestAnimationFrame(loop);if(!last)last=ts;var dt=ts-last;last=ts;
+    if(cur!==null){if(curShown===null)curShown=cur;var dc=cur-curShown; // ~0.7 s ease toward the latest reading
+      if(Math.abs(dc)>0.005){curShown+=dc*Math.min(1,dt/700);if(warming())renderTemp();}}
+    if(!reduce&&heating()){acc+=dt;while(acc>90){acc-=90;if(pool.length<26)spawn();}}
+    for(var i=pool.length-1;i>=0;i--){var o=pool[i];o.life++;o.x+=o.vx;o.y+=o.vy;o.vy-=0.004;
+      var k=o.life/o.max,op=k<0.2?k/0.2:(1-(k-0.2)/0.8);
+      o.el.setAttribute('cx',o.x.toFixed(1));o.el.setAttribute('cy',o.y.toFixed(1));
+      o.el.setAttribute('r',(o.r*(1-k*0.5)).toFixed(1));o.el.setAttribute('opacity',Math.max(0,op).toFixed(2));
+      if(o.life>=o.max){o.el.remove();pool.splice(i,1);}}}
+  requestAnimationFrame(loop);
+
+  /* ---------- connection (PROTOCOL.md §3) ---------- */
+  var app=document.getElementById('app'),dot=document.getElementById('dot'),
+      stName=document.getElementById('stName'),namePill=document.getElementById('namePill');
+  function disconnected(){connected=false;seenState=false;lastCharge=null;write=null;rxBuf=[];mode=null;state=0;autoApply=false;purgeRestore=null;live=false;gotTemp=false;
+    Object.keys(pend).forEach(function(k){clearTimeout(pend[k].t);delete pend[k];}); // no 'no reply' toasts for a dead link
+    brewT0=null;brewEnd=false;runT0=null;runDone=null;drag=null;extDrag=null;tDirty=false;renderTimers();
+    app.classList.add('off');dot.className='dot';stName.textContent='Disconnected · tap to reconnect';pencil.toggleAttribute('hidden',true);syncModeUI();}
+  var devName='',pencil=document.getElementById('pencil'),renaming=false;
+  function nick(){try{return localStorage.getItem('k2-name');}catch(e){return null;}}
+  function showName(){stName.textContent=nick()||devName||'Ikape K2';}
+  var autoApply=false,gotTemp=false,askTries=0;
+  // The K2 drops the odd write, and a lost GET in the handshake would leave the placeholders on screen:
+  // ask again for whatever has not been answered, a few times.
+  function askMissing(){if(!connected||askTries++>=4)return;
+    if(!gotTemp)send(C.GET_TEMP);if(!live)send(C.GET_PARAM);
+    if(!gotTemp||!live)setTimeout(askMissing,1500);}
+  function ready(name){autoApply=true;gotTemp=false;askTries=0;app.classList.add('stale');
+    connected=true;app.classList.remove('off');dot.className='dot connected';
+    devName=name||'Ikape K2';showName();pencil.toggleAttribute('hidden',false);haptic([12,40,12]);
+    if(window.AndroidBle&&AndroidBle.setName)AndroidBle.setName(stName.textContent);
+    if(window.AndroidBle&&AndroidBle.setOffset)AndroidBle.setOffset(off);
+    // initConnect order: clock, preset temp, params, appointment, info, cups, state
+    setTime();send(C.GET_TEMP);send(C.GET_PARAM);send(C.GET_APPT);send(C.INFO);send(C.CUPS,[0]);send(C.STATE);
+    setTimeout(askMissing,1500);}
+
+  // APK path (android/): Java does scan/connect/notify and calls back into window.k2Native.
+  window.k2Native={
+    ready:function(name){write=function(f){AndroidBle.write(hex(f));};ready(name);},
+    data:function(h){if(typeof h!=='string'||!/^(?:[0-9a-f]{2})+$/i.test(h))return;
+      feed(h.match(/../g).map(function(x){return parseInt(x,16);}));},
+    gone:disconnected,
+    fail:function(msg){dot.className='dot';stName.textContent=String(msg).slice(0,60);}};
+
+  async function connect(){
+    if(window.AndroidBle){if(connected)AndroidBle.disconnect();
+      dot.className='dot scanning';stName.textContent='Searching…';AndroidBle.connect();return;}
+    if(!navigator.bluetooth){stName.textContent='No Web Bluetooth here, open k2.html in Chrome';return;}
+    if(dev&&dev.gatt.connected)dev.gatt.disconnect();
+    dot.className='dot scanning';stName.textContent='Searching…';
+    try{
+      dev=await navigator.bluetooth.requestDevice({
+        filters:[{services:[SVC]},{namePrefix:'HI-T'},{namePrefix:'Hi-t'},{namePrefix:'PCM'}],optionalServices:[SVC]});
+      dot.className='dot found';stName.textContent='Connecting…';
+      dev.addEventListener('gattserverdisconnected',disconnected);
+      var s=await (await dev.gatt.connect()).getPrimaryService(SVC);
+      var rx=await s.getCharacteristic(RX_UUID),tx=await s.getCharacteristic(TX_UUID);
+      rx.addEventListener('characteristicvaluechanged',onNotify);
+      await rx.startNotifications();
+      await wait(300);
+      // FFF2 is WRITE NO RESPONSE on the K2
+      write=function(f){return tx.properties.writeWithoutResponse?tx.writeValueWithoutResponse(f):tx.writeValueWithResponse(f);};
+      ready(dev.name);
+    }catch(e){
+      dot.className='dot';
+      stName.textContent=e.name==='NotFoundError'?'Not found · tap to retry':
+        e.name==='SecurityError'?'Bluetooth blocked here, open k2.html in Chrome':'Failed: '+e.message;
+    }}
+  function rename(){
+    renaming=true;var i=document.createElement('input');i.className='rename';i.maxLength=24;
+    i.value=stName.textContent;i.setAttribute('aria-label','Device name');
+    stName.hidden=true;pencil.toggleAttribute('hidden',true);namePill.insertBefore(i,stName);i.focus();i.select();
+    function done(save){if(!renaming)return;renaming=false;var v=i.value.trim();
+      if(save){try{v&&v!==devName?localStorage.setItem('k2-name',v):localStorage.removeItem('k2-name');}catch(e){}
+        if(window.AndroidBle&&AndroidBle.setName)AndroidBle.setName(v||devName);}
+      i.remove();stName.hidden=false;pencil.toggleAttribute('hidden',!connected);showName();if(save)toast('Renamed');}
+    i.addEventListener('keydown',function(e){if(e.key==='Enter')done(true);else if(e.key==='Escape')done(false);});
+    i.addEventListener('blur',function(){done(true);});
+    i.addEventListener('click',function(e){e.stopPropagation();});}
+  // Connected: tap the name to rename it. Otherwise: tap to connect.
+  namePill.addEventListener('click',function(){if(renaming)return;if(connected)rename();else connect();});
+  namePill.addEventListener('keydown',function(e){if(renaming&&e.key===' ')e.stopPropagation();});
+
+  restoreState();renderReadout();renderSegs();renderTimers();renderExt();syncModeUI();updatePName();
+  window.__k2={frame:frame,feed:feed,onFrame:onFrame}; // self-test hook (tests/page_test.js); not reachable from the machine
+})();
+</script>
+</body></html>

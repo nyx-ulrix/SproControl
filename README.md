@@ -10,12 +10,17 @@ verified byte-for-byte against the real machine; the full write-up is in [PROTOC
   <img src="docs/img/app-heating.jpg" width="19%" alt="Heating: the colour climbs with the water temperature">
   <img src="docs/img/app-brewing.jpg" width="19%" alt="Brewing: pre-soak and hold count down">
   <img src="docs/img/app-presets.jpg" width="19%" alt="Presets">
-  <img src="docs/img/app-settings.jpg" width="19%" alt="Settings: water temperature offset">
+  <img src="docs/img/app-settings.jpg" width="19%" alt="Settings: water temperature offset, purge, widget cycle">
 </p>
 <p align="center">
   <img src="docs/img/widget-unlinked.png" width="32%" alt="Home-screen widget before it has reached the machine: dimmed, search only">
   <img src="docs/img/widget-linked.png" width="32%" alt="Home-screen widget: Extract, Heat & Extract, Purge">
   <img src="docs/img/widget-brewing.png" width="32%" alt="Home-screen widget while brewing: timer and Stop">
+</p>
+<p align="center">
+  <img src="docs/img/widget-one-connect.png" width="19%" alt="One-cell widget before a tap has reached the machine: Connect, dimmed">
+  <img src="docs/img/widget-one-purge.png" width="19%" alt="One-cell widget on its Purge step: icon only">
+  <img src="docs/img/widget-one-brew.png" width="19%" alt="One-cell widget on its Heat &amp; Brew step: the profile it will send">
 </p>
 
 A 40 s mock brew (heating, pre-soak, hold, extraction, done) recorded on an emulator with the
@@ -30,9 +35,11 @@ machine's own frames replayed: [docs/brew-demo.mp4](docs/brew-demo.mp4).
   their name and value curved along them; drag along an arc to set it. Extraction time is a straight
   bar underneath. Every change is sent once, on release, then read back from the machine and
   confirmed in the title bar (`Temp 92°C saved`), or retried if the machine dropped the write.
-- **Heat, Heat & Extract, Extract, Purge.** Purge runs the pump alone for 30 s with no pre-soak or
-  hold. The settings it replaced are kept on the phone and put back when it ends, or, if it was
-  interrupted, on the next connect or widget tap. Any running mode turns the row into one Stop button.
+- **Heat, Heat & Extract, Extract, Purge.** Purge runs the pump alone with no pre-soak or hold, for
+  the seconds and flow chosen in Settings (30 s and the brew's own flow by default); the temperature is
+  never touched. The settings it replaced are kept on the phone and put back when it ends or is stopped,
+  or, if it was interrupted, on the next connect or widget tap; if the machine already holds the purge
+  settings nothing is swapped. Any running mode turns the row into one Stop button.
 - **Live readout.** Water temperature, battery and charging state from the machine's status frames
   (about one per second). While heating, the preset part of the arc turns grey and the colour climbs
   with the water temperature, with bubbles rising from it.
@@ -44,9 +51,20 @@ machine's own frames replayed: [docs/brew-demo.mp4](docs/brew-demo.mp4).
   nickname and the offset live only on the phone.
 - **Water temperature offset.** Calibrate against a thermometer: every temperature shown is
   shifted, and the setpoint sent to the machine is corrected the other way.
-- **Home-screen widget.** Dimmed with a Search button until it has reached the machine; then Extract /
-  Heat & Extract / Purge, and a running timer with Stop while brewing. Each tap is one short Bluetooth
-  session: connect, read one status frame, send, disconnect. Nothing polls in the background.
+- **Presets you did not save are kept too.** Brewing with settings that match no preset keeps them as the
+  last-used profile under the name `7 • 7 • 95°C` (pre-soak • hold • temperature), so the widgets show
+  and brew with exactly what you last used.
+- **Two home-screen widgets.** The row widget: dimmed with a Search button until it has reached the
+  machine, then Extract / Heat & Extract / Purge, and a running timer with Stop while brewing. The
+  one-cell widget: a square with a single button that steps through a cycle you compose in Settings from
+  Purge, Heat & Brew, Extract, Heat and Stop (default purge → brew → stop → purge → stop); its only text is
+  the profile a brew step will send. Connect shows until a status frame has arrived and Stop takes over
+  while the machine runs; once the app drops its link the widgets go back to Search / Connect. Each tap is
+  one short Bluetooth session: connect, read one status frame, send, disconnect. Nothing polls in the
+  background.
+- **No brew on unconfirmed settings.** A brew starts only once the machine has read back all five
+  settings it was sent (temperature, flow, pre-soak, hold, extraction). A rejected or unanswered set,
+  or a machine error, greys the brew buttons in the app and stops a widget tap before the start frame.
 - **Offline by design.** The app never touches the network on its own. The link is held while the
   app is on screen and for 30 s after you leave it, then dropped and the page is paused. Before
   connecting, the whole UI is shown greyed out with the values the machine last reported.
@@ -68,7 +86,7 @@ flowchart LR
       UI -- "AndroidBle.write(hex)" --> MA
       MA -- "k2Native.data(hex)" --> UI
     end
-    W["K2Widget<br/>home-screen widget<br/>one short BLE session per tap"]
+    W["K2Widget · K2OneWidget<br/>home-screen widgets<br/>one short BLE session per tap"]
     P[("SharedPreferences<br/>name · last profile · offset · state")]
     MA --> P
     W --> P
@@ -244,7 +262,7 @@ the port with `adb reverse tcp:8765 tcp:8765`.
 | Path | What |
 |---|---|
 | `k2.html` | The whole UI (also the browser version) |
-| `android/` | Manifest, `MainActivity`, `K2Widget`, `ApkProvider` (update installs), resources, `build.ps1` |
+| `android/` | Manifest, `MainActivity`, `K2Widget` (row widget), `K2OneWidget` (one-button widget), `ApkProvider` (update installs), resources, `build.ps1` |
 | `fonts/` | Nunito (SIL OFL 1.1) |
 | `pcm_protocol.py` | Frame encoder, reply decoder, `bleak` sender |
 | `PROTOCOL.md` | The recovered protocol, with live verification notes |

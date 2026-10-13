@@ -38,5 +38,11 @@
             </intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/k2_widget" />
         </receiver>
+        <receiver android:name=".K2OneWidget" android:exported="false" android:label="Ikape K2 button">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/k2_one_widget" />
+        </receiver>
     </application>
 </manifest>

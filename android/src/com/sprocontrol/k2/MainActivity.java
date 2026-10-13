@@ -219,6 +219,7 @@ public class MainActivity extends Activity {
         if (gatt != null) { gatt.disconnect(); gatt.close(); gatt = null; }
         tx = null;
         K2Widget.prefs(this).edit().putLong("appHold", 0).apply(); // widget taps may use the machine again
+        K2Widget.setLinked(this, false); // nothing is connected now: the widgets show Search / Connect until a tap reaches the machine
     }
 
     /** Nickname from the page; the widget shows it as its title. */
@@ -235,19 +236,37 @@ public class MainActivity extends Activity {
     @JavascriptInterface public void setProfile(String json) {
         String clean = "";
         if (json != null && !json.isEmpty()) {
-            try {
-                JSONObject j = new JSONObject(json), o = new JSONObject();
-                String n = j.getString("n").trim();
-                if (n.isEmpty() || n.length() > 20) return;
-                o.put("n", n).put("t", need(j, "t", 0, 130)).put("f", need(j, "f", 0, 9))
-                 .put("s", need(j, "s", 0, 255)).put("h", need(j, "h", 0, 255));
-                o.put("e", j.isNull("e") ? JSONObject.NULL : need(j, "e", 0, 255));
-                clean = o.toString();
-            } catch (Exception e) { return; }
+            try { clean = cleanProfile(new JSONObject(json)).toString(); } catch (Exception e) { return; }
         }
         K2Widget.prefs(this).edit().putString("profile", clean).apply();
         K2Widget.redraw(this);
     }
+
+    /** A profile with only the fields the widgets use, each checked; throws on anything else. */
+    static JSONObject cleanProfile(JSONObject j) throws Exception {
+        String n = j.getString("n").trim();
+        if (n.isEmpty() || n.length() > 20) throw new IllegalArgumentException("name");
+        JSONObject o = new JSONObject().put("n", n).put("t", need(j, "t", 0, 130)).put("f", need(j, "f", 0, 9))
+                .put("s", need(j, "s", 0, 255)).put("h", need(j, "h", 0, 255));
+        o.put("e", j.isNull("e") ? JSONObject.NULL : need(j, "e", 0, 255));
+        return o;
+    }
+
+    /** One-button widget: {order:[purge|brew|extract|heat|stop...], profile:{...}|null}. */
+    @JavascriptInterface public void setOneWidget(String json) {
+        try {
+            JSONObject j = new JSONObject(json), o = new JSONObject();
+            JSONArray in = j.getJSONArray("order"), order = new JSONArray();
+            if (in.length() < 1 || in.length() > 8) return;
+            for (int i = 0; i < in.length(); i++) { String s = in.getString(i); if (!K2OneWidget.STEPS.contains(s)) return; order.put(s); }
+            o.put("order", order);
+            o.put("profile", j.isNull("profile") ? JSONObject.NULL : cleanProfile(j.getJSONObject("profile")));
+            K2Widget.prefs(this).edit().putString("one", o.toString()).putInt("oneIdx", 0).apply();
+            K2Widget.redraw(this);
+        } catch (Exception e) { /* ignored: the page only sends what it built */ }
+    }
+
+    @JavascriptInterface public String getOneWidget() { return K2Widget.prefs(this).getString("one", ""); }
 
     static int need(JSONObject j, String k, int lo, int hi) throws Exception {
         int v = j.getInt(k);
@@ -271,6 +290,15 @@ public class MainActivity extends Activity {
     }
 
     @JavascriptInterface public String pendingRestore() { return K2Widget.prefs(this).getString("restore", ""); }
+
+    /** Purge settings from the page: {e: seconds 30..250, f: flow 0..9 or null for the brew's own}. */
+    @JavascriptInterface public void setPurge(String json) {
+        try {
+            JSONObject j = new JSONObject(json), o = new JSONObject().put("e", need(j, "e", 30, 250));
+            o.put("f", j.isNull("f") ? JSONObject.NULL : need(j, "f", 0, 9));
+            K2Widget.prefs(this).edit().putString("purge", o.toString()).apply();
+        } catch (Exception e) { /* ignored: the page only sends what it built */ }
+    }
 
     /* ---------- updates (GitHub Releases), started only from Settings ---------- */
 
@@ -443,7 +471,6 @@ public class MainActivity extends Activity {
             // PcmDevice.initConnect waits 300 ms after notify-on before its first command
             String name = g.getDevice().getName();
             main.postDelayed(() -> { if (g == gatt) js("ready", name); }, 300);
-            K2Widget.setLinked(MainActivity.this, true); // widget shows the brew buttons
         }
 
         @Override public void onCharacteristicChanged(BluetoothGatt g, BluetoothGattCharacteristic c, byte[] v) { rx(v); }
@@ -463,8 +490,10 @@ public class MainActivity extends Activity {
                 int state = v[9] & 0xFF;
                 String key = st + state;
                 // While we hold the link, widget taps must not open a second one (the K2 takes one central).
-                K2Widget.prefs(MainActivity.this).edit().putLong("appHold", System.currentTimeMillis() + 5000).apply();
-                if (!key.equals(lastStatus)) { lastStatus = key; main.post(() -> K2Widget.show(MainActivity.this, st, state)); }
+                android.content.SharedPreferences p = K2Widget.prefs(MainActivity.this);
+                p.edit().putLong("appHold", System.currentTimeMillis() + 5000).apply();
+                boolean first = !p.getBoolean("linked", false); // the machine has answered: now the widgets may show their buttons
+                if (first || !key.equals(lastStatus)) { lastStatus = key; main.post(() -> { if (first) K2Widget.setLinked(MainActivity.this, true); K2Widget.show(MainActivity.this, st, state); }); }
             }
             js("data", sb.toString());
         }

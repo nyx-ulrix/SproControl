@@ -50,7 +50,9 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
 .gauge>svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none}
 /* Only the bars themselves take touches (.hit paths); touches elsewhere do nothing. */
 .gauge .hit{pointer-events:stroke;touch-action:none;cursor:pointer}
-.seg.lit{filter:drop-shadow(0 0 6px var(--extract))}
+.seg{stroke:rgba(255,255,255,.14);transition:stroke .3s,filter .3s}
+.seg.lit{stroke:#00E0FF;filter:drop-shadow(0 0 6px var(--extract))}
+@media (prefers-reduced-motion: reduce){.seg{transition:none}}
 .lbl{font:800 10.5px var(--font);letter-spacing:1.4px;fill:rgba(255,255,255,.55);text-transform:uppercase}
 /* Centre readout lives inside the arcs (foreignObject), so its sizes are in gauge units. */
 .center{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;font-family:var(--font);color:var(--fg);user-select:none}
@@ -72,6 +74,7 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
 .mode svg{width:34px;height:34px;filter:drop-shadow(0 0 7px currentColor)}
 .mode.heat{color:var(--heat)}.mode.both{color:var(--ready)}.mode.extract{color:var(--extract)}.mode.purge{color:#9DA6FF}
 .mode:active{transform:scale(.88)}
+.mode.blocked{opacity:.28;filter:grayscale(.7)}.mode.blocked:active{transform:none}
 .stopbtn{border:0;background:none;cursor:pointer;height:62px;display:grid;place-items:center;color:var(--heat);transition:transform .12s;width:100%}
 .stopbtn svg{width:40px;height:40px;filter:drop-shadow(0 0 12px var(--heat))}
 .stopbtn:active{transform:scale(.9)}
@@ -84,17 +87,18 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
 .pname{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .pmenu{position:absolute;left:0;top:44px;width:min(300px,calc(100vw - 32px));background:#161618;border:1px solid rgba(255,255,255,.08);border-radius:16px;box-shadow:0 16px 40px rgba(0,0,0,.75);padding:6px}
 .plist{max-height:45vh;overflow:auto}
-.prow{display:flex;align-items:center;gap:8px;padding:6px 4px 6px 10px;border-radius:10px;cursor:pointer}
-.prow.on{background:rgba(255,255,255,.07)}
-.prow:active{background:rgba(255,255,255,.1)}
+.prow{display:flex;align-items:center;gap:8px;padding:10px 4px 10px 10px;cursor:pointer} /* no box: the whole row is the touch area */
+.prow.on .nm{color:var(--ready)}
+.prow:active,.pmenu .ibtn:active{background:none;opacity:.55}
 .prow .nm{flex:1;min-width:0;font-weight:800;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ibtn{border:0;background:none;color:var(--muted);width:34px;height:34px;flex:none;display:grid;place-items:center;cursor:pointer;border-radius:10px}
 .ibtn svg{width:17px;height:17px}
 .ibtn:active{background:rgba(255,255,255,.08)}
 .psave{display:flex;align-items:center;gap:6px;padding:6px 2px 2px 8px;margin-top:4px;border-top:1px solid rgba(255,255,255,.07)}
 .psave>svg{width:15px;height:15px;color:var(--muted);flex:none}
-.psave input{flex:1;min-width:0;height:36px;border:0;border-radius:10px;background:rgba(255,255,255,.07);color:var(--fg);font:800 14px var(--font);padding:0 10px;outline:none}
-.psave input:focus{outline:2px solid var(--extract)}
+.psave input{flex:1;min-width:0;height:36px;border:0;background:none;color:var(--fg);font:800 14px var(--font);padding:0 6px;outline:none}
+.psave input::placeholder{color:var(--muted);opacity:1}
+.psave input:focus{box-shadow:inset 0 -2px 0 var(--extract)}
 .psave .ibtn{color:var(--extract)}
 
 /* Extraction: the meters' style, straight. Drag along it. */
@@ -103,7 +107,7 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
 .app.off .gear{pointer-events:auto} /* settings work while disconnected */
 .gear:active{background:rgba(255,255,255,.08)}
 /* Settings: full-screen sheet over the app. */
-.sheet{position:fixed;inset:0;z-index:20;background:var(--bg);padding:calc(12px + env(safe-area-inset-top,0px)) 16px 16px;display:flex;flex-direction:column;gap:18px;animation:sheetin .2s ease-out;max-width:460px;margin:0 auto}
+.sheet{position:fixed;inset:0;z-index:20;overflow:auto;background:var(--bg);padding:calc(12px + env(safe-area-inset-top,0px)) 16px 16px;display:flex;flex-direction:column;gap:18px;animation:sheetin .2s ease-out;max-width:460px;margin:0 auto}
 @keyframes sheetin{from{opacity:0;transform:translateY(16px)}}
 .shead{display:flex;align-items:center;justify-content:space-between;height:44px}
 .shead b{font-size:20px;font-weight:900}
@@ -117,6 +121,16 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
 .ibtn.wide{width:auto;padding:0 18px;background:var(--surface);color:var(--fg)}
 .ibtn.wide svg{width:20px;height:20px}
 #upd-install{color:var(--ready)}
+.srow{display:flex;align-items:center;gap:6px;padding:3px 0}
+.srow .sic{width:26px;height:26px;display:grid;place-items:center;flex:none}
+.srow .sic svg,.addrow .ibtn svg{width:22px;height:22px}
+.srow .snm{flex:1;min-width:0;font-size:14px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.srow .ibtn,.addrow .ibtn{width:32px;height:32px}
+.srow .ibtn svg{width:16px;height:16px}
+.addrow{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+.lab2{font-size:10.5px;font-weight:800;letter-spacing:1.4px;color:rgba(255,255,255,.55);text-transform:uppercase;margin-right:6px}
+.purge{color:#9DA6FF}.brew{color:var(--ready)}.extract{color:var(--extract)}.heat{color:var(--heat)}.stop{color:var(--heat)}
+.cal select{flex:1;min-width:0;height:36px;border:0;border-radius:10px;background:rgba(255,255,255,.07);color:var(--fg);font:800 14px var(--font);padding:0 10px}
 .ext{flex:none;padding:0 4px 4px}
 .ext .lab{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
 .ext .lab span{font-size:10.5px;font-weight:800;letter-spacing:1.4px;color:rgba(255,255,255,.55);text-transform:uppercase}
@@ -124,7 +138,7 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
 .extbar{position:relative;height:30px;touch-action:none;cursor:pointer}
 .extbar .trk,.extbar .fil{position:absolute;left:0;top:0;height:14px;border-radius:7px}
 .extbar .trk{right:0;background:rgba(255,255,255,.08)}
-.extbar .fil{min-width:14px;background:linear-gradient(90deg,#0a7f91,#00E0FF);box-shadow:0 0 10px rgba(0,224,255,.55)}
+.extbar .fil{min-width:14px;background:linear-gradient(90deg,#0a7f91,#00E0FF);box-shadow:0 0 10px rgba(0,224,255,.55);transition:width .25s}
 .extbar .tks{position:absolute;left:7px;right:7px;top:21px;height:7px;background-image:repeating-linear-gradient(90deg,rgba(255,255,255,.18) 0 1.4px,transparent 1.4px 100%)}
 </style></head><body>
 <div class="wrap">
@@ -151,7 +165,7 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
             <div class="plist" id="plist"></div>
             <div class="psave">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16v4Z"/></svg>
-              <input id="pinput" maxlength="20" autocomplete="off" aria-label="Preset name">
+              <input id="pinput" maxlength="20" autocomplete="off" placeholder="New preset name" aria-label="Preset name">
               <button class="ibtn" id="psavebtn" aria-label="Save current settings as a preset"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v18l-6-4-6 4V3Z"/><path d="M12 7v6M9 10h6"/></svg></button>
             </div>
           </div>
@@ -229,6 +243,25 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
       <div class="lab"><span>Water temp offset</span><b id="v-off">0°C</b></div>
       <div class="extbar" id="offbar" role="slider" aria-label="Water temperature offset" aria-valuemin="-10" aria-valuemax="10" aria-valuenow="0"><div class="trk"></div><div class="fil" id="offfil"></div><div class="zero"></div><div class="tks" style="background-size:5% 100%"></div></div>
       <p>Drag to match a thermometer: every water temperature in the app, presets and widget shifts by this, and the setpoint sent to the machine is corrected to match.</p>
+    </div>
+    <div class="sset" id="purges">
+      <div class="lab"><span>Purge</span></div>
+      <div class="cal"><span class="lab2">Water for</span><select id="purge-e" aria-label="Purge duration"></select></div>
+      <div class="cal"><span class="lab2">Flow</span><select id="purge-f" aria-label="Purge flow"><option value="">Same as brew</option><option value="0">Low</option><option value="1">Medium</option><option value="2">High</option></select></div>
+      <p>Purge runs the pump with no pre-soak or hold and never touches the temperature. The brew settings come back when it ends or is stopped.</p>
+    </div>
+    <div class="sset" id="onew" hidden>
+      <div class="lab"><span>Widgets</span></div>
+      <div id="onesteps"></div>
+      <div class="addrow"><span class="lab2">Add</span>
+        <button class="ibtn purge" data-add="purge" aria-label="Add Purge"></button>
+        <button class="ibtn brew" data-add="brew" aria-label="Add Heat and Brew"></button>
+        <button class="ibtn extract" data-add="extract" aria-label="Add Extract"></button>
+        <button class="ibtn heat" data-add="heat" aria-label="Add Heat"></button>
+        <button class="ibtn stop" data-add="stop" aria-label="Add Stop"></button>
+      </div>
+      <div class="cal"><span class="lab2">Brew with</span><select id="oneprof" aria-label="Profile for Heat and Brew"></select></div>
+      <p>The button steps through this cycle, one step per tap. It shows Connect until the machine is reached, and Stop whenever the machine is running. "Brew with" is the profile both widgets send before Heat &amp; Brew: the last one you used, or a saved preset.</p>
     </div>
     <div class="sset" id="upd" hidden>
       <div class="lab"><span>App update</span><b id="upd-ver"></b></div>
@@ -315,8 +348,9 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
       if(seenState&&was!==state&&EVENTS[state]&&!(state===0&&!(was in STATE_MODE)))toast(EVENTS[state]);seenState=true;
       var m=STATE_MODE[state]||null;if(m!==mode){mode=m;syncModeUI();}
       showError(ERRORS[d[5]]||null);renderReadout();renderTimers();
-      // A purge ran with 0/0/30 s; once extraction stops, put the user's settings back.
-      if(purgeRestore&&was===3&&state!==3){purgeRestore=null;applyRestore();}
+      // A purge replaced the settings; once the machine is idle again, put the user's back. The K2 does not
+      // always report "extracting" for a short purge, so an idle frame after the purge's own length counts too.
+      if(purgeRestore&&!(state in STATE_MODE)&&(was===3||Date.now()-purgeT0>(purgeS+5)*1000)){purgeRestore=null;applyRestore();}
     }else if(cmd===C.GET_TEMP&&d.length>=3){
       // The K2 reports its preset and range in °F (100..204 = 38..96 °C); state temps are °C.
       if(d[1]<=d[0])return; // not a usable range; keep the last good one
@@ -324,7 +358,7 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
       TMIN=f2c(d[0])+off;TMAX=f2c(d[1])+off;if(!drag)target=clampT(f2c(d[2])+off);renderTemp();
       // The K2 keeps whole °C and reports floor(°C×1.8+32): sending 198 °F (92 °C) reads back 197.
       // So compare in °C, not the raw °F byte.
-      verify('temp',f2c(d[2])+off);updatePName();rememberState();
+      haveT=f2c(d[2]);verify('temp',haveT+off);updatePName();rememberState();syncModeUI();
     }else if(cmd===C.GET_PARAM&&d.length>=7){
       if(d.length>11){FMIN=d[10];FMAX=d[11];}
       var old=live?params:null,first=!live;live=true;app.classList.remove('stale');
@@ -333,7 +367,7 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
       if(old&&extDrag!==null&&old.ext&&params.ext)params.ext[0]=old.ext[0];
       renderTimers();renderExt();
       if(!drag)pLevel=Math.max(1,Math.min(3,d[0]-FMIN+1));renderSegs();
-      var got=[d[0],d[1],d[4]].concat(d.length>9?[d[7]]:[]);verify('param',got.join());lastParam=got;
+      var got=[d[0],d[1],d[4]].concat(d.length>9?[d[7]]:[]);verify('param',got.join());lastParam=got;syncModeUI();
       updatePName(); // after pLevel above, so the match sees this reply's flow
       rememberState();
       if(first&&restorePending()&&!(state in STATE_MODE))applyRestore();
@@ -341,15 +375,26 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
     }}
 
   // Read-back check: after a set, the matching get must return what we sent (as HappyGo's _save does).
-  var pend={};
-  function expect(key,want,set,query,name){if(pend[key])clearTimeout(pend[key].t);
-    pend[key]={want:String(want),set:set,query:query,name:name,tries:0,
-      t:setTimeout(function(){delete pend[key];toast(name+': no reply',true);},4000)};}
+  var pend={},bad={},haveT=null; // bad: a set the machine rejected or never echoed; haveT: its preset temp (°C, machine scale)
+  function expect(key,want,set,query,name,n){if(pend[key])clearTimeout(pend[key].t);
+    pend[key]={want:String(want),set:set,query:query,name:name,n:n||9,tries:0};arm(key);syncModeUI();}
+  // No echo within 1.5 s (the K2 drops the odd write): ask again, up to 4 times in all, then give up.
+  function arm(key){var p=pend[key];p.t=setTimeout(function(){if(++p.tries<4)again(key);
+    else{delete pend[key];bad[key]=true;toast(p.name+': no reply',true);syncModeUI();}},1500);}
+  function again(key){var p=pend[key];clearTimeout(p.t);
+    setTimeout(function(){if(pend[key]!==p)return;send(p.set[0],p.set[1]);send(p.query);arm(key);},300);}
   function verify(key,got){var p=pend[key];if(!p)return;
-    if(String(got)===p.want){clearTimeout(p.t);delete pend[key];toast(p.name+' saved');}
-    // The K2 sometimes drops a write without echoing it, so mismatch -> send the set again.
-    else if(++p.tries<4)setTimeout(function(){send(p.set[0],p.set[1]);send(p.query);},300);
-    else{clearTimeout(p.t);delete pend[key];toast(p.name+' not accepted',true);}}
+    var cut=function(s){return String(s).split(',').slice(0,p.n).join();}; // n: how many fields matter (3 for a purge)
+    if(cut(got)===cut(p.want)){clearTimeout(p.t);delete pend[key];delete bad[key];toast(p.name+' saved');}
+    else if(++p.tries<4){again(key);return;} // mismatch: dropped or refused, so send the set again
+    else{clearTimeout(p.t);delete pend[key];bad[key]=true;toast(p.name+' not accepted',true);}
+    syncModeUI();}
+  // Why a brew may not start: the machine has to hold the five settings shown (temp, flow, pre-soak, hold, extraction).
+  function brewBlock(){if(!live||!gotTemp)return 'Waiting for the machine';if(lastErr)return lastErr;
+    if(pend.temp||pend.param)return 'Checking settings';
+    if(bad.temp)return 'Temperature not accepted · set it again';if(bad.param)return 'Brew settings not accepted · set them again';
+    if(haveT+off!==Math.round(target))return 'Temperature not on the machine · set it again';
+    if(uiParams().join()!==lastParam.join())return 'Brew settings not on the machine · set them again';return null;}
   var nq=[],nBusy=false;
   function toast(msg,bad){nq.push([msg,bad]);if(nq.length>6)nq.shift();if(!nBusy)nextNote();}
   function nextNote(){var el=document.getElementById('pnote'),n=nq.shift();
@@ -368,9 +413,9 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
   function f2c(f){return Math.round((f-32)/1.8);}
   function c2f(c){return Math.round(c*1.8+32);}
   // 0x18 always carries every field, so flow and the brew card share one sender.
-  function sendFlow(){if(!live)return;var flow=Math.min(FMAX,FMIN+pLevel-1),
-    d=[flow,params.soak[0],params.stand[0]];if(params.ext)d.push(params.ext[0]);
-    expect('param',d.join(),[C.SET_PARAM,d],C.GET_PARAM,describe(d));send(C.SET_PARAM,d);send(C.GET_PARAM);}
+  function uiParams(){var d=[Math.min(FMAX,FMIN+pLevel-1),params.soak[0],params.stand[0]];if(params.ext)d.push(params.ext[0]);return d;}
+  function sendFlow(n){if(!live)return;var d=uiParams();
+    expect('param',d.join(),[C.SET_PARAM,d],C.GET_PARAM,describe(d),n);send(C.SET_PARAM,d);send(C.GET_PARAM);}
   function sendWork(m,start){send(C.WORK,[MODE_IDX[m],start?1:0]);send(C.STATE);}
 
   /* ---------- UI ---------- */
@@ -400,10 +445,19 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
   var segG=$('segs'),SPEEDS=['Low','Medium','High'];
   var gap=7,each=(SPAN-2*gap)/3;
   function segRange(i){var d1=A_BOT+i*(each+gap);return [d1,d1+each];}
-  function renderSegs(){var s="";
-    for(var i=0;i<3;i++){var rg=segRange(i),lit=i<pLevel;
-      s+='<path class="seg'+(lit?' lit':'')+'" d="'+arcPath(R2,rg[0],rg[1])+'" fill="none" stroke="'+(lit?'#00E0FF':'rgba(255,255,255,0.14)')+'" stroke-width="14" stroke-linecap="round"/>';}
-    segG.innerHTML=s;$('flowLbl').textContent='Flow · '+SPEEDS[pLevel-1];}
+  function renderSegs(){if(!segG.children.length){var s="";
+      for(var i=0;i<3;i++){var rg=segRange(i);s+='<path class="seg" d="'+arcPath(R2,rg[0],rg[1])+'" fill="none" stroke-width="14" stroke-linecap="round"/>';}
+      segG.innerHTML=s;}
+    for(var j=0;j<3;j++)segG.children[j].classList.toggle('lit',j<pLevel);
+    $('flowLbl').textContent='Flow · '+SPEEDS[pLevel-1];}
+
+  // Meters glide: an arc eases toward its new length in the frame loop (~0.25 s) instead of jumping.
+  // The one under the finger, the first paint and reduced-motion set it at once.
+  var want={},shown={};
+  function arcAt(id,r,f,snap){f=Math.max(0,Math.min(1,f));want[id]=[r,f];
+    if(snap||reduce||!(id in shown)){shown[id]=f;setD(id,arcTo(r,f));}}
+  function glide(dt){for(var id in want){var w=want[id],s=shown[id],d=w[1]-s;if(!d)continue;
+      s=Math.abs(d)<0.0015?w[1]:s+d*Math.min(1,dt/220);shown[id]=s;setD(id,arcTo(w[0],s));}}
 
   // Temperature meter: fills to the preset. While the machine heats, the preset part turns grey and the
   // colour climbs with the real water temperature; the big number counts up with it.
@@ -415,7 +469,7 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
   function fillTemp(){return warming()?(curShown===null?cur:curShown):target;}
   function renderTemp(){var w=warming();
     setD('tempGhost',w?arcTo(R1,tf(target)):'');
-    setD('tempFill',arcTo(R1,tf(fillTemp())));
+    arcAt('tempFill',R1,tf(fillTemp()),!!drag&&drag.k==='t');
     // Big number: the actual water temperature (eased while heating); the preset is on the arc label.
     tval.textContent=cur===null?'--':Math.round(w?fillTemp():cur);$('tempLbl').textContent='Temp · '+Math.round(target)+'°';}
   function clampT(v){return Math.max(TMIN,Math.min(TMAX,Math.round(v)));}
@@ -450,8 +504,8 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
     return Math.max(0,Math.ceil(k==='soak'?s-el:params.stand[0]-Math.max(0,el-s)));}
   function renderTimers(){
     [['soak',RS,'soakFill','soakLbl','Pre-soak'],['stand',RH,'holdFill','holdLbl','Hold']].forEach(function(x){
-      var p=params&&params[x[0]];if(!p){setD(x[2],'');$(x[3]).textContent=x[4];return;}
-      var v=timerVal(x[0]);setD(x[2],arcTo(x[1],(v-p[1])/((p[2]-p[1])||1)));
+      var p=params&&params[x[0]];if(!p){arcAt(x[2],x[1],0,true);$(x[3]).textContent=x[4];return;}
+      var v=timerVal(x[0]);arcAt(x[2],x[1],(v-p[1])/((p[2]-p[1])||1),!!drag&&drag.k===x[0]);
       $(x[3]).textContent=x[4]+' · '+v+'s'+(brewing()?' left':'');});
     renderRun();
     var ph=$('phase');
@@ -467,6 +521,7 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
   function renderExt(){var p=params&&params.ext;$('row-ext').hidden=!!params&&!p;
     if(!p){$('v-ext').textContent='--';return;}
     var f=(p[0]-p[1])/((p[2]-p[1])||1);
+    $('extfil').style.transition=extDrag!==null?'none':''; // follows the finger, glides otherwise
     $('extfil').style.width='calc(14px + '+(f*100)+'% - '+(f*14)+'px)';
     $('v-ext').textContent=p[0]+'s';extbar.setAttribute('aria-valuemin',p[1]);extbar.setAttribute('aria-valuemax',p[2]);extbar.setAttribute('aria-valuenow',p[0]);
     $('extticks').style.backgroundSize=(100/Math.max(1,Math.round((p[2]-p[1])/10)))+'% 100%';}
@@ -520,7 +575,12 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
   function storeP(a){try{localStorage.setItem('k2-presets',JSON.stringify(a));}catch(e){}}
   function nowP(){return live?{t:Math.round(target),f:FMIN+pLevel-1,s:params.soak[0],h:params.stand[0],e:params.ext?params.ext[0]:null}:null;}
   function same(p,c){return !!c&&p.t===c.t&&p.f===c.f&&p.s===c.s&&p.h===c.h&&(p.e===null||p.e===c.e);}
-  function activeP(){var c=nowP();return loadP().filter(function(p){return same(p,c);})[0]||null;}
+  // The last brew's settings, kept when they match no saved preset, named "pre-soak • hold • temp".
+  function tempP(){try{var t=JSON.parse(localStorage.getItem('k2-temp'));return validP(t)?t:null;}catch(e){return null;}}
+  function activeP(){var c=nowP(),t=tempP();return loadP().filter(function(p){return same(p,c);})[0]||(t&&same(t,c)?t:null);}
+  function markBrew(){if(!live)return;var a=activeP();
+    if(!a){a=nowP();a.n=a.s+' \u2022 '+a.h+' \u2022 '+a.t+'\u00b0C';try{localStorage.setItem('k2-temp',JSON.stringify(a));}catch(e){}}
+    remember(a);updatePName();}
   // Button width stops before the outer ring's ticks at that height; long names shrink to 10px, then ellipsis.
   function fitPresets(){var b=$('pbtn'),nm=$('pname'),g=$('gauge').getBoundingClientRect(),r=svg.getBoundingClientRect(),
       sc=Math.min(r.width/VW,r.height/VH),ox=r.right-VW*sc,oy=r.top+(r.height-VH*sc)/2,
@@ -541,7 +601,7 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
   function remember(p){try{p?localStorage.setItem('k2-last',p.n):localStorage.removeItem('k2-last');}catch(e){}
     if(window.AndroidBle&&AndroidBle.setProfile)AndroidBle.setProfile(p?JSON.stringify(p):'');}
   function lastP(){var n=null;try{n=localStorage.getItem('k2-last');}catch(e){}
-    return n?loadP().filter(function(p){return p.n===n;})[0]||null:null;}
+    if(!n)return null;var t=tempP();return loadP().filter(function(p){return p.n===n;})[0]||(t&&t.n===n?t:null);}
   function applyPreset(p){if(!connected||!live){toast('Connect first',true);return;}
     remember(p);
     toast('Preset '+p.n);
@@ -582,7 +642,50 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
   offbar.addEventListener('pointermove',function(e){if(offDrag!==null)offAt(e);});
   function offUp(){if(offDrag===null)return;if(off!==offDrag)toast('Offset '+(off>0?'+':'')+off+'°C');offDrag=null;}
   offbar.addEventListener('pointerup',offUp);offbar.addEventListener('pointercancel',offUp);
-  $('gear').addEventListener('click',function(){renderOff();$('settings').hidden=false;});
+  // Purge: seconds of water and the flow (null = the brew's own), on this phone and in the widgets' prefs.
+  var PURGE_S=[30,45,60,90,120,180,250];
+  function purgeCfg(){try{var p=JSON.parse(localStorage.getItem('k2-purge'));
+      if(p&&typeof p.e==='number')return {e:Math.max(30,Math.min(250,p.e|0)),f:[0,1,2].indexOf(p.f)>=0?p.f:null};}catch(x){}return {e:30,f:null};}
+  function savePurge(p){try{localStorage.setItem('k2-purge',JSON.stringify(p));}catch(e){}
+    if(window.AndroidBle&&AndroidBle.setPurge)AndroidBle.setPurge(JSON.stringify(p));}
+  function renderPurge(){var p=purgeCfg(),se=$('purge-e');se.innerHTML='';
+    PURGE_S.forEach(function(s){var o=document.createElement('option');o.value=s;o.textContent=s+' s';se.appendChild(o);});
+    se.value=String(p.e);$('purge-f').value=p.f===null?'':String(p.f);}
+  function purgeChanged(){var f=$('purge-f').value;savePurge({e:+$('purge-e').value,f:f===''?null:+f});}
+  $('purge-e').addEventListener('change',purgeChanged);$('purge-f').addEventListener('change',purgeChanged);
+  $('gear').addEventListener('click',function(){renderOff();renderPurge();if(!$('onew').hidden){loadOne();renderOne();}$('settings').hidden=false;});
+
+  // One-button widget: the cycle of steps and the profile for Heat & Brew, kept by the app (prefs "one").
+  var SI='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">',
+      STEP={purge:['Purge',SI+'<path d="M5 4h14M8 4v2M16 4v2M6 6h12v2H6zM8 12v3M12 12v6M16 12v3M8 19v1M16 19v1"/></svg>'],
+            brew:['Heat & Brew',SI+'<path d="M12 2c1.8 2.2 3 3.8 3 5.3a3 3 0 0 1-6 0C9 5.8 10.2 4.2 12 2Z"/><path d="M5 12h10v3a4.5 4.5 0 0 1-4.5 4.5H9.5A4.5 4.5 0 0 1 5 15v-3Z"/><path d="M15 13h1.5a1.8 1.8 0 0 1 0 3.6H15"/></svg>'],
+            extract:['Extract',SI+'<path d="M5 8h11v4a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5V8Z"/><path d="M16 9h2a2 2 0 0 1 0 4h-2"/><path d="M8 3v2M11 3v2"/><path d="M7 21h8"/></svg>'],
+            heat:['Heat',SI+'<path d="M12 3c2.5 3 4 5 4 7a4 4 0 0 1-8 0c0-2 1.5-4 4-7Z"/><path d="M6 20h12"/></svg>'],
+            stop:['Stop','<svg viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="3.5"/></svg>']},
+      UPI=SI+'<path d="m6 15 6-6 6 6"/></svg>',DNI=SI+'<path d="m6 9 6 6 6-6"/></svg>',
+      oneCfg={order:['purge','brew','stop','purge','stop'],profile:null};
+  function loadOne(){if(!(window.AndroidBle&&AndroidBle.getOneWidget))return;
+    try{var j=JSON.parse(AndroidBle.getOneWidget()||'null');
+      if(j&&Array.isArray(j.order)){var o=j.order.filter(function(s){return STEP[s];});if(o.length)oneCfg={order:o,profile:validP(j.profile)?j.profile:null};}}catch(e){}}
+  function saveOne(){if(window.AndroidBle&&AndroidBle.setOneWidget)AndroidBle.setOneWidget(JSON.stringify(oneCfg));renderOne();}
+  function renderOne(){var list=$('onesteps');
+    list.innerHTML=oneCfg.order.map(function(s,i){return '<div class="srow"><span class="sic '+s+'">'+STEP[s][1]+'</span><span class="snm"></span>'+
+      '<button class="ibtn" data-up="'+i+'" aria-label="Move up"'+(i===0?' disabled':'')+'>'+UPI+'</button>'+
+      '<button class="ibtn" data-down="'+i+'" aria-label="Move down"'+(i===oneCfg.order.length-1?' disabled':'')+'>'+DNI+'</button>'+
+      '<button class="ibtn" data-del="'+i+'" aria-label="Remove"'+(oneCfg.order.length<2?' disabled':'')+'>'+DEL+'</button></div>';}).join('');
+    Array.prototype.forEach.call(list.querySelectorAll('.snm'),function(el,i){el.textContent=STEP[oneCfg.order[i]][0];});
+    var sel=$('oneprof'),names=loadP().map(function(p){return p.n;});sel.innerHTML='';
+    [['','Last used']].concat(names.map(function(n){return [n,n];})).forEach(function(o){var op=document.createElement('option');op.value=o[0];op.textContent=o[1];sel.appendChild(op);});
+    sel.value=oneCfg.profile&&names.indexOf(oneCfg.profile.n)>=0?oneCfg.profile.n:'';}
+  if(window.AndroidBle&&AndroidBle.setOneWidget){$('onew').hidden=false;
+    Array.prototype.forEach.call(document.querySelectorAll('#onew [data-add]'),function(b){b.innerHTML=STEP[b.dataset.add][1];
+      b.addEventListener('click',function(){if(oneCfg.order.length>=8)return;oneCfg.order.push(b.dataset.add);saveOne();});});
+    $('onesteps').addEventListener('click',function(e){var b=e.target.closest('button');if(!b||b.disabled)return;var o=oneCfg.order,i;
+      if(b.dataset.up!==undefined){i=+b.dataset.up;o.splice(i-1,0,o.splice(i,1)[0]);}
+      else if(b.dataset.down!==undefined){i=+b.dataset.down;o.splice(i+1,0,o.splice(i,1)[0]);}
+      else if(b.dataset.del!==undefined){o.splice(+b.dataset.del,1);}
+      saveOne();});
+    $('oneprof').addEventListener('change',function(){var n=$('oneprof').value;oneCfg.profile=n?loadP().filter(function(p){return p.n===n;})[0]||null:null;saveOne();});}
 
   // App update (APK only): one request to GitHub when tapped; the download is verified by Java before installing.
   var upd=null;
@@ -604,8 +707,10 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
 
 
 
-  var modesEl=document.getElementById('modes'),stopEl=document.getElementById('stop');
-  function syncModeUI(){var active=mode!==null;modesEl.hidden=active;stopEl.hidden=!active;}
+  var modesEl=document.getElementById('modes'),stopEl=document.getElementById('stop'),
+      brewBtns=document.querySelectorAll('.mode.heat,.mode.both,.mode.extract');
+  function syncModeUI(){var active=mode!==null,why=connected&&!active?brewBlock():null;modesEl.hidden=active;stopEl.hidden=!active;
+    brewBtns.forEach(function(b){b.classList.toggle('blocked',!!why);b.setAttribute('aria-disabled',why?'true':'false');});}
   var purgeRestore=null;
   function saveRestore(r){try{r?localStorage.setItem('k2-purge-restore',JSON.stringify(r)):localStorage.removeItem('k2-purge-restore');}catch(e){}
     if(window.AndroidBle&&AndroidBle.setRestore)AndroidBle.setRestore(r?JSON.stringify({f:r.f,s:r.soak,h:r.stand,e:r.ext}):'');}
@@ -618,26 +723,36 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
     params.soak[0]=Math.max(params.soak[1],Math.min(params.soak[2],r.soak));
     params.stand[0]=Math.max(params.stand[1],Math.min(params.stand[2],r.stand));
     if(params.ext&&r.ext!==null)params.ext[0]=Math.max(params.ext[1],Math.min(params.ext[2],r.ext));
-    renderSegs();renderTimers();renderExt();sendFlow();toast('Settings restored after purge');}
+    renderSegs();renderTimers();renderExt();sendFlow(3);toast('Settings restored after purge');}
+  var purgeT0=0,purgeS=30;
   function purge(){if(!connected||!live||mode)return;
-    purgeRestore={f:FMIN+pLevel-1,soak:params.soak[0],stand:params.stand[0],ext:params.ext?params.ext[0]:null};
-    saveRestore(purgeRestore);
-    params.soak[0]=params.soak[1];params.stand[0]=params.stand[1];
-    if(params.ext)params.ext[0]=Math.max(params.ext[1],Math.min(params.ext[2],30));
-    renderTimers();renderExt();sendFlow();
-    sendWork('extract',true);mode='extract';syncModeUI();toast('Purge: 30 s of water');haptic([10,30,10]);}
+    var pc=purgeCfg(),cur=uiParams(),f=pc.f===null?cur[0]:Math.max(FMIN,Math.min(FMAX,pc.f)),
+        e=params.ext?Math.max(params.ext[1],Math.min(params.ext[2],pc.e)):null,
+        wantP=[f,params.soak[1],params.stand[1]].concat(e===null?[]:[e]);
+    // The temperature is never touched. If the machine already holds the purge settings there is nothing
+    // to swap or put back; otherwise keep the brew settings and check flow / pre-soak / hold on the way in.
+    if(wantP.join()!==cur.join()){
+      purgeRestore={f:cur[0],soak:cur[1],stand:cur[2],ext:e===null?null:cur[3]};saveRestore(purgeRestore);
+      pLevel=Math.max(1,Math.min(3,f-FMIN+1));params.soak[0]=wantP[1];params.stand[0]=wantP[2];if(e!==null)params.ext[0]=e;
+      renderSegs();renderTimers();renderExt();sendFlow(3);}
+    purgeT0=Date.now();purgeS=e||30;
+    sendWork('extract',true);mode='extract';syncModeUI();toast('Purge: '+purgeS+' s of water');haptic([10,30,10]);}
   function setMode(m){if(!connected)return;
     if(m==='purge'){purge();return;}
-    if(mode!==m&&(m==='heat'||m==='both')&&batt!==null&&batt<18)
+    if(mode===m){sendWork(m,false);mode=null;syncModeUI();haptic(12);
+      if(purgeRestore){purgeRestore=null;setTimeout(applyRestore,600);} // a stopped purge: settings back once the stop has landed
+      return;}
+    var why=brewBlock();if(why){toast(why,true);haptic(12);return;} // nothing starts until the machine holds the shown settings
+    if((m==='heat'||m==='both')&&batt!==null&&batt<18)
       toast('Battery under 18%: heating may not finish, extraction still works',true);
-    if(mode===m){sendWork(m,false);mode=null;}else{sendWork(m,true);mode=m;}
-    syncModeUI();haptic(mode?[10,30,10]:12);}
+    markBrew();sendWork(m,true);mode=m;
+    syncModeUI();haptic([10,30,10]);}
   document.querySelectorAll('.mode').forEach(function(btn){btn.addEventListener('click',function(){setMode(btn.dataset.mode);});});
   stopEl.addEventListener('click',function(){if(mode)setMode(mode);});
 
   // Machine errors go to the name bar, once each time the error code changes.
   var lastErr=null;
-  function showError(msg){if(msg&&msg!==lastErr)toast(msg,true);lastErr=msg;}
+  function showError(msg){if(msg===lastErr)return;if(msg)toast(msg,true);lastErr=msg;syncModeUI();}
 
   // bubbles rise from the top of the fill while heating
   var bubs=document.getElementById('bubs'),pool=[];
@@ -652,6 +767,7 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
   function loop(ts){requestAnimationFrame(loop);if(!last)last=ts;var dt=ts-last;last=ts;
     if(cur!==null){if(curShown===null)curShown=cur;var dc=cur-curShown; // ~0.7 s ease toward the latest reading
       if(Math.abs(dc)>0.005){curShown+=dc*Math.min(1,dt/700);if(warming())renderTemp();}}
+    glide(dt);
     if(!reduce&&heating()){acc+=dt;while(acc>90){acc-=90;if(pool.length<26)spawn();}}
     for(var i=pool.length-1;i>=0;i--){var o=pool[i];o.life++;o.x+=o.vx;o.y+=o.vy;o.vy-=0.004;
       var k=o.life/o.max,op=k<0.2?k/0.2:(1-(k-0.2)/0.8);
@@ -663,7 +779,7 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
   /* ---------- connection (PROTOCOL.md §3) ---------- */
   var app=document.getElementById('app'),dot=document.getElementById('dot'),
       stName=document.getElementById('stName'),namePill=document.getElementById('namePill');
-  function disconnected(){connected=false;seenState=false;lastCharge=null;write=null;rxBuf=[];mode=null;state=0;autoApply=false;purgeRestore=null;live=false;gotTemp=false;
+  function disconnected(){connected=false;seenState=false;lastCharge=null;write=null;rxBuf=[];mode=null;state=0;autoApply=false;purgeRestore=null;live=false;gotTemp=false;bad={};haveT=null;
     Object.keys(pend).forEach(function(k){clearTimeout(pend[k].t);delete pend[k];}); // no 'no reply' toasts for a dead link
     brewT0=null;brewEnd=false;runT0=null;runDone=null;drag=null;extDrag=null;tDirty=false;renderTimers();
     app.classList.add('off');dot.className='dot';stName.textContent='Disconnected · tap to reconnect';pencil.toggleAttribute('hidden',true);syncModeUI();}

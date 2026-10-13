@@ -3,7 +3,7 @@
 // It feeds the page frames captured from a live K2 and checks what the page decodes and sends.
 (async function () {
   const sent = [];
-  window.AndroidBle = { write: h => sent.push(h), connect() {}, disconnect() {}, setName() {}, setProfile() {}, setOffset() {} };
+  window.AndroidBle = { write: h => sent.push(h), connect() {}, disconnect() {}, setName() {}, setProfile() {}, setOffset() {}, setPurge() {} };
   const k = window.__k2, sleep = ms => new Promise(r => setTimeout(r, ms)), $ = id => document.getElementById(id);
   const fr = (cmd, data) => { const d = [0x7e, 0, data.length + 5, 0, cmd, ...data]; d[3] = d.reduce((a, b) => a + b, 0) & 255; return new Uint8Array(d); };
   const hx = s => new Uint8Array(s.match(/../g).map(x => parseInt(x, 16)));
@@ -64,6 +64,17 @@
   k.feed(fr(0x15, [100, 204, 197]));
   check('mismatch resends the set', await until(() => sent.some(h => h.includes(' 16 '))));
 
+  // a setting the machine keeps rejecting blocks the brew buttons until a later set is accepted
+  for (let i = 0; i < 4; i++) { k.feed(fr(0x15, [100, 204, 197])); await sleep(350); }
+  check('rejected temperature reported', await until(() => $('pnote').textContent === 'Temp 90°C not accepted', 2500));
+  sent.length = 0; document.querySelector('.mode.both').click(); await sleep(80);
+  check('brew blocked while the machine rejects the profile', document.querySelector('.mode.both').classList.contains('blocked') && !sent.some(h => h.includes(' 02 ')));
+  const t93 = at(93);
+  sl.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: t93[0], clientY: t93[1], pointerId: 1 }));
+  window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 1 }));
+  await until(() => sent.some(h => h === '7f 00 06 62 16 c7')); k.feed(fr(0x15, [100, 204, 199])); await sleep(30);
+  check('accepted set unblocks the brew', !document.querySelector('.mode.both').classList.contains('blocked'));
+
   // brew timers
   k.feed(fr(0x00, [1, 69, 2, 49, 3, 0])); await sleep(1100);
   check('extraction starts the countdown', /Pre-soak · \d+s left/.test($('soakLbl').textContent));
@@ -90,7 +101,31 @@
   sent.length = 0; k2Native.ready('Hi-t-1292G0_B526'); await sleep(350);
   k.feed(fr(0x00, [1, 69, 2, 49, 0, 0])); k.feed(fr(0x17, [2, 0, 0, 10, 0, 0, 10, 30, 30, 250]));
   check('interrupted purge restored on reconnect', await until(() => sent.includes('7f 00 09 aa 18 02 07 07 fa')));
+  k.feed(fr(0x17, [2, 7, 0, 10, 7, 0, 10, 250, 30, 250])); k.feed(fr(0x15, [100, 204, 197])); await sleep(50);
+
+  // a purge stopped by hand before the K2 ever reported "extracting" still gets the settings back
+  k.feed(fr(0x00, [1, 69, 2, 49, 0, 0])); await sleep(50); sent.length = 0;
+  document.querySelector('.mode.purge').click();
+  await until(() => sent.includes('7f 00 07 8b 02 02 01'));
+  k.feed(fr(0x17, [2, 0, 0, 10, 0, 0, 10, 30, 30, 250])); await sleep(50); sent.length = 0;
+  $('stop').click();
+  check('stop ends the purge', await until(() => sent.includes('7f 00 07 8a 02 02 00')));
+  check('stopped purge restores 7/7/250', await until(() => sent.includes('7f 00 09 aa 18 02 07 07 fa'), 2000));
   k.feed(fr(0x17, [2, 7, 0, 10, 7, 0, 10, 250, 30, 250])); await sleep(50);
+  // a purge when the machine already holds the purge settings sends no settings at all
+  k.feed(fr(0x17, [2, 0, 0, 10, 0, 0, 10, 30, 30, 250])); await sleep(50); sent.length = 0;
+  document.querySelector('.mode.purge').click();
+  await until(() => sent.includes('7f 00 07 8b 02 02 01'));
+  check('purge on purge settings sets nothing', !sent.some(h => h.includes(' 18 ')));
+  $('stop').click(); await sleep(800);
+  check('and restores nothing', !sent.some(h => h.includes(' 18 ')));
+  k.feed(fr(0x17, [2, 7, 0, 10, 7, 0, 10, 250, 30, 250])); await sleep(50);
+
+  // a brew started with unsaved settings becomes the temporary "soak • hold • temp" profile
+  k.feed(fr(0x00, [1, 69, 2, 49, 0, 0])); await sleep(50);
+  document.querySelector('.mode.both').click(); await sleep(50);
+  check('temporary profile named from the settings', $('prof').textContent === '7 • 7 • 92°C' && localStorage.getItem('k2-last') === '7 • 7 • 92°C');
+  document.getElementById('stop').click(); await sleep(50);
 
   // disconnect clears everything
   k2Native.gone(); await sleep(50);

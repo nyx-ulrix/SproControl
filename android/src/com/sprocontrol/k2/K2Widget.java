@@ -30,7 +30,7 @@ import org.json.JSONObject;
 public class K2Widget extends AppWidgetProvider {
     static final String EXTRACT = "com.sprocontrol.k2.EXTRACT", BOTH = "com.sprocontrol.k2.BOTH",
             SEARCH = "com.sprocontrol.k2.SEARCH", CLEAR = "com.sprocontrol.k2.CLEAR", PURGE = "com.sprocontrol.k2.PURGE";
-    static final int EXTRACTING = 3, HOT_EXTRACTING = 1; // PcmDeviceState values (status byte 9)
+    static final int EXTRACTING = 3, HOT_EXTRACTING = 1, HOT_WATERING = 5; // PcmDeviceState values (status byte 9)
     static final long DONE_MS = 10_000;         // how long the final time stays after a brew
     static final long BREW_MAX_MS = 20 * 60_000; // ponytail: no brew runs this long; an older "running" state is stale
     static final long TAP_TIMEOUT_MS = 8_000;    // under the 10 s a broadcast receiver is allowed to stay alive
@@ -99,6 +99,7 @@ public class K2Widget extends AppWidgetProvider {
 
     static void redraw(Context c) {
         AppWidgetManager.getInstance(c).updateAppWidget(new ComponentName(c, K2Widget.class), views(c));
+        K2OneWidget.redraw(c);
     }
 
     /** Save what the machine is doing and redraw. state < 0 keeps the saved state.
@@ -170,9 +171,10 @@ public class K2Widget extends AppWidgetProvider {
 
     /** The last-used profile as SET_TEMP (°F on the K2) + SET_WORK_PARAM frames, or none.
      *  MainActivity.setProfile only stores validated values; frame() clamps to a byte regardless. */
-    static List<byte[]> profileFrames(Context c) {
+    static List<byte[]> profileFrames(Context c) { return profileFrames(c, profile(c)); }
+
+    static List<byte[]> profileFrames(Context c, JSONObject j) {
         List<byte[]> out = new ArrayList<>();
-        JSONObject j = profile(c);
         if (j == null) return out;
         try {
             // profile temps are shown (offset) °C; the machine wants its own scale, in °F
@@ -183,19 +185,26 @@ public class K2Widget extends AppWidgetProvider {
         return out;
     }
 
-    /** Purge settings: the profile's flow (medium if none), pre-soak 0, hold 0, extraction 30 s. */
+    /** Purge settings: the flow and seconds chosen in the app's Settings (else `flow` and 30 s), pre-soak 0, hold 0. */
+    static byte[] purgeFrame(Context c, int flow, boolean ext) {
+        int f = flow, e = 30;
+        try { JSONObject j = new JSONObject(prefs(c).getString("purge", "{}")); if (!j.isNull("f")) f = j.getInt("f"); e = j.optInt("e", 30); }
+        catch (Exception x) { /* defaults */ }
+        return ext ? frame(0x18, f, 0, 0, e) : frame(0x18, f, 0, 0);
+    }
+
     static byte[] purgeFrame(Context c) {
         JSONObject j = profile(c);
         int flow = 1;
-        try { if (j != null) flow = j.getInt("f"); } catch (Exception e) { /* keep medium */ }
-        return j != null && j.isNull("e") ? frame(0x18, flow, 0, 0) : frame(0x18, flow, 0, 0, 30);
+        try { if (j != null) flow = j.getInt("f"); } catch (Exception e) { /* medium */ }
+        return purgeFrame(c, flow, j == null || !j.isNull("e"));
     }
 
     @Override public void onReceive(Context c, Intent i) {
         super.onReceive(c, i);
         String a = i.getAction();
         if (EXTRACT.equals(a)) new Tap(c, 2, EXTRACTING, goAsync()).run();        // mode extraction
-        else if (BOTH.equals(a)) new Tap(c, 1, HOT_EXTRACTING, goAsync()).run();  // mode hotExtraction
+        else if (BOTH.equals(a)) new Tap(c, 1, HOT_EXTRACTING, goAsync()).withProfile(K2OneWidget.brewProfile(c)).run();  // mode hotExtraction, chosen profile
         else if (PURGE.equals(a)) new Tap(c, 2, EXTRACTING, goAsync()).purge().run();  // extraction with 0/0/30 s
         else if (SEARCH.equals(a)) new Tap(c, -1, -1, goAsync()).run();           // just reach it and read the state
         else if (CLEAR.equals(a)) { prefs(c).edit().putLong("doneUntil", 0).apply(); redraw(c); }
@@ -204,7 +213,9 @@ public class K2Widget extends AppWidgetProvider {
     /** One widget tap = one short BLE session. mode < 0 (Search) only reads. All state is touched on the main thread. */
     static class Tap extends BluetoothGattCallback {
         final Context c; final int mode, runningState; final PendingResult done;
-        BluetoothGatt gatt; BluetoothGattCharacteristic tx; boolean handled, finished, isPurge, wantParams;
+        BluetoothGatt gatt; BluetoothGattCharacteristic tx; boolean handled, finished, isPurge, wantParams, stopOnly;
+        JSONObject profileOverride, want;       // want: the profile a start must see read back before it goes out
+        boolean needTemp, needParam; int lastState;
         String status;
 
         Tap(Context c, int mode, int runningState, PendingResult done) {
@@ -212,6 +223,8 @@ public class K2Widget extends AppWidgetProvider {
         }
 
         Tap purge() { isPurge = true; return this; }
+        Tap stopOnly() { stopOnly = true; return this; }                       // never starts anything
+        Tap withProfile(JSONObject p) { profileOverride = p; return this; }    // settings sent before the start
 
         @SuppressWarnings("MissingPermission")
         void run() {
@@ -275,17 +288,35 @@ public class K2Widget extends AppWidgetProvider {
 
         void rx(BluetoothGatt g, byte[] v) {
             if (finished) return;
+            // Start, step 2: the read-backs of the settings just sent. All five must match or nothing starts.
+            if (want != null && valid(v)) {
+                if (v[4] == 0x15 && v.length >= 8 && needTemp) {
+                    needTemp = false;
+                    int got = Math.round(((v[7] & 0xFF) - 32) / 1.8f), t = want.optInt("t") - prefs(c).getInt("offset", 0);
+                    if (got != t) { Log.i("K2", "widget: temp read back " + got + " not " + t); finish("Temp not accepted", lastState); return; }
+                } else if (v[4] == 0x17 && v.length >= 12 && needParam) {
+                    needParam = false;
+                    boolean ok = (v[5] & 0xFF) == want.optInt("f") && (v[6] & 0xFF) == want.optInt("s") && (v[9] & 0xFF) == want.optInt("h")
+                            && (want.isNull("e") || (v.length > 12 && (v[12] & 0xFF) == want.optInt("e")));
+                    if (!ok) { Log.i("K2", "widget: settings read back differ from the profile"); finish("Settings not accepted", lastState); return; }
+                } else return;
+                if (!needTemp && !needParam) go(g, frame(0x02, mode, 1), null, runningState);
+                return;
+            }
             // Purge, step 2: the machine's current settings arrive; keep them, then purge with its own flow speed.
             if (wantParams && valid(v) && v.length >= 12 && v[4] == 0x17) {
                 wantParams = false;
                 int f = v[5] & 0xFF, s = v[6] & 0xFF, h = v[9] & 0xFF;
                 boolean ext = v.length > 14;
+                byte[] purge = purgeFrame(c, f, ext);
+                // Already on the purge settings: nothing to swap now or put back later.
+                if (s == 0 && h == 0 && (purge[5] & 0xFF) == f && (!ext || (v[12] & 0xFF) == (purge[8] & 0xFF))) { go(g, null, frame(0x02, 2, 1), runningState); return; }
                 try {
                     JSONObject j = new JSONObject().put("f", f).put("s", s).put("h", h);
                     j.put("e", ext ? v[12] & 0xFF : JSONObject.NULL);
                     prefs(c).edit().putString("restore", j.toString()).apply();
                 } catch (Exception e) { /* nothing kept; the profile still restores on the next brew */ }
-                go(g, ext ? frame(0x18, f, 0, 0, 30) : frame(0x18, f, 0, 0), frame(0x02, 2, 1), runningState);
+                go(g, purge, frame(0x02, 2, 1), runningState);
                 return;
             }
             String st = status(c, v);
@@ -304,6 +335,9 @@ public class K2Widget extends AppWidgetProvider {
                 return;
             }
             if (stop) { go(g, null, frame(0x02, running, 0), 0); return; }
+            if (stopOnly) { finish(st, now); return; } // nothing running: a Stop tap does nothing
+            int err = v.length > 10 ? v[10] & 0xFF : 0;
+            if (err != 0) { finish("Machine error " + err, now); return; } // status byte 10: dry burning, overheating, ...
             if (isPurge) {
                 // Purge, step 1: ask for the current settings so they can be kept (step 2 above); fall back after 1.5 s.
                 wantParams = true;
@@ -311,13 +345,20 @@ public class K2Widget extends AppWidgetProvider {
                 MAIN.postDelayed(() -> { if (wantParams && !finished) { wantParams = false; go(g, purgeFrame(c), frame(0x02, 2, 1), runningState); } }, 1500);
                 return;
             }
-            // Start: settings a purge replaced go back first, then the last-used profile, then the start.
+            // Start, step 1: settings a purge replaced go back first, then the profile, then a read of both
+            // (step 2 above sends the start once they match). No profile: start with whatever the machine holds.
             List<byte[]> frames = new ArrayList<>();
             if (restore != null) { frames.add(restore); prefs(c).edit().remove("restore").apply(); }
-            frames.addAll(profileFrames(c));
-            frames.add(frame(0x02, mode, 1));
-            Log.i("K2", "widget start mode " + mode + " with " + (frames.size() - 1) + " settings frames (machine state " + now + ")");
-            sendAll(g, frames, runningState);
+            JSONObject p = profileOverride != null ? profileOverride : profile(c);
+            frames.addAll(profileFrames(c, p));
+            if (p == null) { frames.add(frame(0x02, mode, 1)); sendAll(g, frames, runningState); return; }
+            want = p; needTemp = needParam = true; lastState = now;
+            frames.add(frame(0x15)); frames.add(frame(0x17));
+            Log.i("K2", "widget mode " + mode + ": " + (frames.size() - 2) + " settings frames, then read-back (machine state " + now + ")");
+            sendOnly(g, frames);
+            // The K2 drops the odd write: ask once more, then give up without starting.
+            MAIN.postDelayed(() -> { if (!finished && (needTemp || needParam)) sendOnly(g, frames); }, 1500);
+            MAIN.postDelayed(() -> { if (!finished && (needTemp || needParam)) finish("Settings unconfirmed", lastState); }, 3500);
         }
 
         /** One or two writes, then finish showing `state`. */
@@ -331,8 +372,12 @@ public class K2Widget extends AppWidgetProvider {
 
         /** Writes 80 ms apart; the result shows right away and the next tap (or the app) corrects it if the machine disagrees. */
         void sendAll(BluetoothGatt g, List<byte[]> frames, int state) {
-            for (int i = 0; i < frames.size(); i++) { byte[] f = frames.get(i); MAIN.postDelayed(() -> write(g, f), 80L * i); }
+            sendOnly(g, frames);
             MAIN.postDelayed(() -> finish(status, state), 80L * frames.size() + 600);
+        }
+
+        void sendOnly(BluetoothGatt g, List<byte[]> frames) {
+            for (int i = 0; i < frames.size(); i++) { byte[] f = frames.get(i); MAIN.postDelayed(() -> write(g, f), 80L * i); }
         }
     }
 }

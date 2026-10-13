@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- One-cell widget: a fixed square (launcher cells are rarely square) holding one button, with the brew profile
+     under it when the step is a brew. The whole cell taps. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/oneroot"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <LinearLayout
+        android:layout_width="64dp"
+        android:layout_height="64dp"
+        android:layout_gravity="center"
+        android:background="@drawable/widget_bg"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:padding="2dp">
+
+        <ImageButton
+            android:id="@+id/obtn"
+            android:layout_width="44dp"
+            android:layout_height="38dp"
+            android:background="@android:color/transparent"
+            android:contentDescription="Brew step"
+            android:padding="4dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_search" />
+
+        <TextView
+            android:id="@+id/olabel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:gravity="center"
+            android:singleLine="true"
+            android:text=""
+            android:textColor="#B3FFFFFF"
+            android:textSize="9sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+    </LinearLayout>
+</FrameLayout>

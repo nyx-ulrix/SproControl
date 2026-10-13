@@ -280,7 +280,7 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
   // Gauge geometry (viewBox 300x500): one centre off the right edge; Temp, Flow, Pre-soak, Hold from outside in.
   var VW=300,VH=500,CX=330,CY=250,R1=285,R2=232,RS=190,RH=150,A_BOT=124,A_TOP=236,SPAN=A_TOP-A_BOT;
   // Device-reported values (PROTOCOL.md §4.3). Defaults until the replies land.
-  var TMIN=38,TMAX=96,target=92,cur=null,batt=null;
+  var TMIN=38,TMAX=96,target=95,cur=null,batt=null;
   // params from 0x17: {soak,stand,ext:[value,min,max]|null}. Placeholders until the machine reports its own,
   // so the greyed-out preview before connecting shows the complete UI.
   var pLevel=2,FMIN=0,FMAX=2,params={soak:[5,0,10],stand:[3,0,10],ext:[60,30,250]},live=false;

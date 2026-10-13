@@ -130,7 +130,8 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
 .addrow{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
 .lab2{font-size:10.5px;font-weight:800;letter-spacing:1.4px;color:rgba(255,255,255,.55);text-transform:uppercase;margin-right:6px}
 .purge{color:#9DA6FF}.brew{color:var(--ready)}.extract{color:var(--extract)}.heat{color:var(--heat)}.stop{color:var(--heat)}
-.cal select{flex:1;min-width:0;height:36px;border:0;border-radius:10px;background:rgba(255,255,255,.07);color:var(--fg);font:800 14px var(--font);padding:0 10px}
+.cal select,.cal input{flex:1;min-width:0;height:36px;border:0;border-radius:10px;background:rgba(255,255,255,.07);color:var(--fg);font:800 14px var(--font);padding:0 10px;outline:none}
+.cal input:focus{outline:2px solid var(--extract)}
 .ext{flex:none;padding:0 4px 4px}
 .ext .lab{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
 .ext .lab span{font-size:10.5px;font-weight:800;letter-spacing:1.4px;color:rgba(255,255,255,.55);text-transform:uppercase}
@@ -246,7 +247,7 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
     </div>
     <div class="sset" id="purges">
       <div class="lab"><span>Purge</span></div>
-      <div class="cal"><span class="lab2">Water for</span><select id="purge-e" aria-label="Purge duration"></select></div>
+      <div class="cal"><span class="lab2">Water for</span><input id="purge-e" type="number" inputmode="numeric" min="30" max="250" step="1" aria-label="Purge seconds"><span class="lab2">s</span></div>
       <div class="cal"><span class="lab2">Flow</span><select id="purge-f" aria-label="Purge flow"><option value="">Same as brew</option><option value="0">Low</option><option value="1">Medium</option><option value="2">High</option></select></div>
       <p>Purge runs the pump with no pre-soak or hold and never touches the temperature. The brew settings come back when it ends or is stopped.</p>
     </div>
@@ -643,15 +644,13 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
   function offUp(){if(offDrag===null)return;if(off!==offDrag)toast('Offset '+(off>0?'+':'')+off+'°C');offDrag=null;}
   offbar.addEventListener('pointerup',offUp);offbar.addEventListener('pointercancel',offUp);
   // Purge: seconds of water and the flow (null = the brew's own), on this phone and in the widgets' prefs.
-  var PURGE_S=[30,45,60,90,120,180,250];
   function purgeCfg(){try{var p=JSON.parse(localStorage.getItem('k2-purge'));
       if(p&&typeof p.e==='number')return {e:Math.max(30,Math.min(250,p.e|0)),f:[0,1,2].indexOf(p.f)>=0?p.f:null};}catch(x){}return {e:30,f:null};}
   function savePurge(p){try{localStorage.setItem('k2-purge',JSON.stringify(p));}catch(e){}
     if(window.AndroidBle&&AndroidBle.setPurge)AndroidBle.setPurge(JSON.stringify(p));}
-  function renderPurge(){var p=purgeCfg(),se=$('purge-e');se.innerHTML='';
-    PURGE_S.forEach(function(s){var o=document.createElement('option');o.value=s;o.textContent=s+' s';se.appendChild(o);});
-    se.value=String(p.e);$('purge-f').value=p.f===null?'':String(p.f);}
-  function purgeChanged(){var f=$('purge-f').value;savePurge({e:+$('purge-e').value,f:f===''?null:+f});}
+  function renderPurge(){var p=purgeCfg();$('purge-e').value=p.e;$('purge-f').value=p.f===null?'':String(p.f);}
+  function purgeChanged(){var f=$('purge-f').value,e=Math.max(30,Math.min(250,Math.round(+$('purge-e').value)||30));
+    $('purge-e').value=e;savePurge({e:e,f:f===''?null:+f});}
   $('purge-e').addEventListener('change',purgeChanged);$('purge-f').addEventListener('change',purgeChanged);
   $('gear').addEventListener('click',function(){renderOff();renderPurge();if(!$('onew').hidden){loadOne();renderOne();}$('settings').hidden=false;});
 

@@ -47,9 +47,13 @@ machine's own frames replayed: [docs/brew-demo.mp4](docs/brew-demo.mp4).
 - **Home-screen widget.** Dimmed with a Search button until it has reached the machine; then Extract /
   Heat & Extract / Purge, and a running timer with Stop while brewing. Each tap is one short Bluetooth
   session: connect, read one status frame, send, disconnect. Nothing polls in the background.
-- **Offline by design.** The app has no network permission. The link is held while the app is on
-  screen and for 30 s after you leave it, then dropped and the page is paused. Before connecting, the
-  whole UI is shown greyed out with the values the machine last reported.
+- **Offline by design.** The app never touches the network on its own. The link is held while the
+  app is on screen and for 30 s after you leave it, then dropped and the page is paused. Before
+  connecting, the whole UI is shown greyed out with the values the machine last reported.
+- **Updates on request.** Settings has a check button: one HTTPS request to this repository's GitHub
+  Releases, and, if you accept, the APK download. The download is checked against the SHA-256 in the
+  release notes and against the installed app's signing certificate before Android's installer is
+  asked to install it. Nothing is checked automatically.
 - **Browser version.** `k2.html` is the same UI; opened in Chrome it talks to the machine through
   Web Bluetooth (phone or laptop), no install needed.
 
@@ -192,7 +196,9 @@ add: anyone in range who knows these frames can control it. Bonding gives link e
 The code was reviewed on the assumption that nothing is trusted: not the machine, not stored data,
 not the page.
 
-- No `INTERNET` permission; the WebView answers requests from assets or denies them.
+- The WebView answers requests from assets or denies them; the only network use is the update check
+  the user starts, limited to `https` on GitHub hosts (redirects included), with a size cap, a
+  checksum check and a signing-certificate check before the installer runs.
 - Everything that crosses a boundary is validated: frames (length, checksum, ranges), bridge
   arguments (hex, lengths, JSON fields), stored presets and remembered values.
 - Device names reach the page JSON-quoted, never as code; preset names are rendered as text.
@@ -215,6 +221,12 @@ The first release build creates `~/.android/sprocontrol-release.jks` and its pas
 it; back both up, updates must be signed with the same key. Pair the machine once (in the app, or
 with any BLE tool), then tap the name to connect.
 
+### Publishing a release
+
+Tag the commit (`v1.0.0`), attach `android/out/k2.apk` (renamed, e.g. `SproControl-1.0.0.apk`) and
+put the `sha256 …` line that `build.ps1` prints into the release notes; the app's update check reads
+the tag, the `.apk` asset and that checksum.
+
 ### Browser
 
 Serve the repository (`python -m http.server 8765`) and open `k2.html` in Chrome; on a phone, forward
@@ -232,7 +244,7 @@ the port with `adb reverse tcp:8765 tcp:8765`.
 | Path | What |
 |---|---|
 | `k2.html` | The whole UI (also the browser version) |
-| `android/` | Manifest, `MainActivity`, `K2Widget`, resources, `build.ps1` |
+| `android/` | Manifest, `MainActivity`, `K2Widget`, `ApkProvider` (update installs), resources, `build.ps1` |
 | `fonts/` | Nunito (SIL OFL 1.1) |
 | `pcm_protocol.py` | Frame encoder, reply decoder, `bleak` sender |
 | `PROTOCOL.md` | The recovered protocol, with live verification notes |

@@ -4,8 +4,12 @@ import android.Manifest;
 import android.app.Activity;
 import android.bluetooth.*;
 import android.bluetooth.le.*;
+import android.content.Intent;
 import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
+import android.content.pm.Signature;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -18,9 +22,20 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.security.MessageDigest;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import javax.net.ssl.HttpsURLConnection;
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 /** WebView around assets/k2.html. Android WebView has no Web Bluetooth, so BLE lives here
@@ -40,6 +55,9 @@ public class MainActivity extends Activity {
     static final int MAX_FRAME = 64; // longest command is 12 bytes; anything bigger is not a PcmBlePack frame
     // ponytail: leaving the screen counts as the user's last action; the link is kept this long after it.
     static final long IDLE_MS = 30_000;
+    // Updates: GitHub Releases of this repository. Checked only when the user taps Check in Settings.
+    static final String REPO = "nyx-ulrix/SproControl";
+    static final long MAX_APK = 20L << 20;
 
     WebView web;
     BluetoothAdapter adapter;
@@ -253,6 +271,120 @@ public class MainActivity extends Activity {
     }
 
     @JavascriptInterface public String pendingRestore() { return K2Widget.prefs(this).getString("restore", ""); }
+
+    /* ---------- updates (GitHub Releases), started only from Settings ---------- */
+
+    @JavascriptInterface public String version() {
+        try { return getPackageManager().getPackageInfo(getPackageName(), 0).versionName; } catch (Exception e) { return "?"; }
+    }
+
+    @JavascriptInterface public void checkUpdate() { new Thread(this::doCheck, "k2-update-check").start(); }
+
+    /** Only https and only GitHub, after redirects too. */
+    static HttpsURLConnection open(String url) throws IOException {
+        URL u = new URL(url);
+        if (!"https".equals(u.getProtocol()) || !githubHost(u.getHost())) throw new IOException("Refused: " + u.getHost());
+        HttpsURLConnection c = (HttpsURLConnection) u.openConnection();
+        c.setConnectTimeout(10000); c.setReadTimeout(15000);
+        c.setRequestProperty("User-Agent", "SproControl");
+        c.setRequestProperty("Accept", "application/vnd.github+json");
+        c.connect();
+        if (!githubHost(c.getURL().getHost())) throw new IOException("Refused redirect to " + c.getURL().getHost());
+        return c;
+    }
+
+    static boolean githubHost(String h) {
+        return h != null && (h.equals("github.com") || h.equals("api.github.com") || h.endsWith(".github.com") || h.endsWith(".githubusercontent.com"));
+    }
+
+    static byte[] readAll(InputStream in, long max) throws IOException {
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        byte[] buf = new byte[8192]; int n; long total = 0;
+        while ((n = in.read(buf)) > 0) { total += n; if (total > max) throw new IOException("Too large"); out.write(buf, 0, n); }
+        return out.toByteArray();
+    }
+
+    void doCheck() {
+        try {
+            HttpsURLConnection c = open("https://api.github.com/repos/" + REPO + "/releases/latest");
+            int code = c.getResponseCode();
+            if (code == 404) { js("update", "{\"none\":true}"); return; }
+            if (code != 200) throw new IOException("GitHub answered " + code);
+            JSONObject rel = new JSONObject(new String(readAll(c.getInputStream(), 1 << 20), "UTF-8"));
+            String tag = rel.getString("tag_name").replaceFirst("^[vV]", "");
+            String url = null; long size = 0;
+            JSONArray assets = rel.optJSONArray("assets");
+            for (int i = 0; assets != null && i < assets.length(); i++) {
+                JSONObject a = assets.getJSONObject(i);
+                if (a.optString("name").endsWith(".apk")) { url = a.optString("browser_download_url"); size = a.optLong("size"); break; }
+            }
+            Matcher m = Pattern.compile("(?i)sha-?256[:\\s]+([0-9a-f]{64})").matcher(rel.optString("body", ""));
+            JSONObject out = new JSONObject().put("version", tag).put("newer", newer(tag, version()))
+                    .put("url", url == null ? JSONObject.NULL : url).put("size", size)
+                    .put("sha", m.find() ? m.group(1).toLowerCase() : JSONObject.NULL)
+                    .put("notes", rel.optString("body", "").trim());
+            js("update", out.toString());
+        } catch (Exception e) {
+            js("update", "{\"error\":" + JSONObject.quote(e.getMessage() == null ? e.toString() : e.getMessage()) + "}");
+        }
+    }
+
+    /** "1.2.0" > "1.0.0"; non-numeric parts count as 0. */
+    static boolean newer(String a, String b) {
+        String[] x = a.split("[.\\-]"), y = b.split("[.\\-]");
+        for (int i = 0; i < Math.max(x.length, y.length); i++) {
+            int p = i < x.length ? num(x[i]) : 0, q = i < y.length ? num(y[i]) : 0;
+            if (p != q) return p > q;
+        }
+        return false;
+    }
+
+    static int num(String s) { try { return Integer.parseInt(s.replaceAll("\\D.*$", "")); } catch (Exception e) { return 0; } }
+
+    /** Download the release APK, verify its SHA-256 (from the release notes) and its signing certificate,
+     *  then hand it to Android's installer. The user confirms there as well. */
+    @JavascriptInterface public void installUpdate(String url, String sha) {
+        new Thread(() -> doInstall(url, sha == null ? "" : sha.trim().toLowerCase()), "k2-update-download").start();
+    }
+
+    void doInstall(String url, String sha) {
+        File apk = new File(getCacheDir(), ApkProvider.NAME);
+        try {
+            HttpsURLConnection c = open(url);
+            if (c.getResponseCode() != 200) throw new IOException("Download failed: " + c.getResponseCode());
+            long len = c.getContentLengthLong();
+            if (len > MAX_APK) throw new IOException("Too large");
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            try (InputStream in = c.getInputStream(); FileOutputStream out = new FileOutputStream(apk)) {
+                byte[] buf = new byte[16384]; int n; long total = 0, last = 0;
+                while ((n = in.read(buf)) > 0) {
+                    total += n; if (total > MAX_APK) throw new IOException("Too large");
+                    md.update(buf, 0, n); out.write(buf, 0, n);
+                    if (len > 0 && total - last > len / 20) { last = total; js("update", "{\"progress\":" + (int) (100 * total / len) + "}"); }
+                }
+            }
+            String got = hex(md.digest());
+            if (!sha.isEmpty() && !sha.equals(got)) throw new IOException("Checksum mismatch");
+            // Same signing certificate as the installed app, or Android would refuse it anyway; say so up front.
+            PackageManager pm = getPackageManager();
+            PackageInfo mine = pm.getPackageInfo(getPackageName(), PackageManager.GET_SIGNING_CERTIFICATES);
+            PackageInfo theirs = pm.getPackageArchiveInfo(apk.getPath(), PackageManager.GET_SIGNING_CERTIFICATES);
+            if (theirs == null || theirs.signingInfo == null) throw new IOException("Not a valid APK");
+            Signature[] a = mine.signingInfo.getApkContentsSigners(), b = theirs.signingInfo.getApkContentsSigners();
+            if (a.length == 0 || b.length == 0 || !Arrays.equals(a[0].toByteArray(), b[0].toByteArray())) throw new IOException("Signed with a different key");
+            if (!getPackageName().equals(theirs.packageName)) throw new IOException("Different package");
+            js("update", "{\"installing\":true}");
+            Intent i = new Intent(Intent.ACTION_VIEW)
+                    .setDataAndType(Uri.parse("content://" + ApkProvider.AUTHORITY + "/" + ApkProvider.NAME), "application/vnd.android.package-archive")
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            main.post(() -> startActivity(i));
+        } catch (Exception e) {
+            apk.delete();
+            js("update", "{\"error\":" + JSONObject.quote(e.getMessage() == null ? e.toString() : e.getMessage()) + "}");
+        }
+    }
+
+    static String hex(byte[] d) { StringBuilder sb = new StringBuilder(); for (byte x : d) sb.append(String.format("%02x", x & 0xFF)); return sb.toString(); }
 
     /** Water temp offset from Settings (shown = machine + offset); the widget applies it too. */
     @JavascriptInterface public void setOffset(int o) {

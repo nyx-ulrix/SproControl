@@ -77,7 +77,9 @@ public class K2Widget extends AppWidgetProvider {
         else v.setViewVisibility(R.id.wtimer, GONE);
         // Not linked: Search only. Linked: brew buttons; while brewing they merge into one Stop
         // (the Extract slot; it stops whatever runs). The final time replaces them until it clears.
-        v.setViewVisibility(R.id.wopen, linked ? GONE : SHOWN);
+        boolean searching = !linked && (status.startsWith("Searching") || status.startsWith("Connecting"));
+        v.setViewVisibility(R.id.wbusy, searching ? SHOWN : GONE); // spinner while a tap looks for the machine
+        v.setViewVisibility(R.id.wopen, linked || searching ? GONE : SHOWN);
         v.setViewVisibility(R.id.wextract, linked && !done ? SHOWN : GONE);
         v.setViewVisibility(R.id.wboth, linked && !busy && !done ? SHOWN : GONE);
         v.setViewVisibility(R.id.wpurge, linked && !busy && !done ? SHOWN : GONE);
@@ -238,7 +240,10 @@ public class K2Widget extends AppWidgetProvider {
             try {
                 if (ad != null && ad.isEnabled()) for (BluetoothDevice d : ad.getBondedDevices()) if (MainActivity.isK2(d.getName())) dev = d;
             } catch (SecurityException e) { finish("Open app once", -1); return; }
-            if (dev == null) { finish(ad != null && ad.isEnabled() ? "Pair in app first" : "Bluetooth off", -1); return; }
+            // Not bonded: the address the app last reached (any K2 the app has connected to).
+            String mac = prefs(c).getString("mac", "");
+            if (dev == null && ad != null && !mac.isEmpty()) { try { dev = ad.getRemoteDevice(mac); } catch (IllegalArgumentException e) { /* no device */ } }
+            if (dev == null) { finish(ad != null && ad.isEnabled() ? "Connect in app first" : "Bluetooth off", -1); return; }
             show(c, mode >= 0 ? "Connecting…" : "Searching…", -1);
             MAIN.postDelayed(() -> finish(mode >= 0 ? "Not reachable" : "Not found", -1), TAP_TIMEOUT_MS);
             gatt = dev.connectGatt(c, false, this, BluetoothDevice.TRANSPORT_LE);

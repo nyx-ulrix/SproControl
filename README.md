@@ -80,7 +80,7 @@ machine's own frames replayed: [docs/brew-demo.mp4](docs/brew-demo.mp4).
 ```mermaid
 flowchart LR
   subgraph Phone["Android phone"]
-    subgraph App["Ikape K2 app"]
+    subgraph App["SproCtrl app"]
       UI["k2.html<br/>gauge UI · presets · timers<br/>served from an app-private origin"]
       MA["MainActivity<br/>BLE link · JS bridge · lifecycle"]
       UI -- "AndroidBle.write(hex)" --> MA
@@ -114,7 +114,10 @@ the browser.
 flowchart TD
   A["Tap the name"] --> B{"Bonded K2?"}
   B -- yes --> C["connectGatt"]
-  B -- no --> S["Scan (asks for location only now)"] --> C
+  B -- no --> M{"Address<br>remembered?"}
+  M -- yes --> D["Connect to it directly"] --> C
+  M -- no --> S["Scan (asks for location only now)"] --> C
+  D -- no answer --> S
   C --> D["Discover FFF0, enable FFF1 notifications"]
   D --> E["Wait 300 ms"]
   E --> F["Handshake, 40 ms apart:<br/>SET_TIME 0x04 · GET_TEMP 0x15 · GET_PARAM 0x17<br/>GET_APPT 0x24 · GET_INFO 0x08 · GET_CUPS 0x06 · GET_STATE 0x00"]
@@ -205,6 +208,7 @@ add: anyone in range who knows these frames can control it. Bonding gives link e
 | Setpoints ignored by the machine | Logged traffic showed °F; convert and compare read-backs in °C |
 | Writes occasionally dropped | Read back every set and resend up to three times |
 | "Not found" on the first scan | ColorOS location deny list; bonded-device shortcut, just-in-time location |
+| Location prompt on every connect (unbonded phone) | The machine's address is remembered after the first link; later connects, app and widgets, go to it directly without a scan |
 | Widget taps fought the app for the single link | App publishes a short "hold" flag the widget respects |
 | App kept the link alive in the background | 30 s grace after leaving, then disconnect and pause the page |
 | Bundled font not loading in the APK | Private `https://` origin via `shouldInterceptRequest`; assets packaged with `jar` |

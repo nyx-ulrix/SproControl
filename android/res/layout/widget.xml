@@ -91,6 +91,15 @@
             android:scaleType="fitCenter"
             android:src="@drawable/ic_purge" />
 
+        <ProgressBar
+            android:id="@+id/wbusy"
+            style="?android:attr/progressBarStyleSmall"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:padding="11dp"
+            android:indeterminateTint="#FFFFFF"
+            android:visibility="gone" />
+
         <ImageButton
             android:id="@+id/wopen"
             android:layout_width="44dp"

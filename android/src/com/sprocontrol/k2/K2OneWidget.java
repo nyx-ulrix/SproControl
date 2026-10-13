@@ -66,6 +66,10 @@ public class K2OneWidget extends AppWidgetProvider {
             case "extract": icon = R.drawable.ic_extract; label = name(K2Widget.profile(c), ""); break;
             default:        icon = R.drawable.ic_both;    label = name(brewProfile(c), "");
         }
+        String status = K2Widget.prefs(c).getString("status", "");
+        boolean searching = step.equals("connect") && (status.startsWith("Searching") || status.startsWith("Connecting"));
+        v.setViewVisibility(R.id.obusy, searching ? View.VISIBLE : View.GONE); // spinner while a tap looks for the machine
+        v.setViewVisibility(R.id.obtn, searching ? View.GONE : View.VISIBLE);
         v.setImageViewResource(R.id.obtn, icon);
         v.setTextViewText(R.id.olabel, label);
         v.setViewVisibility(R.id.olabel, label.isEmpty() ? View.GONE : View.VISIBLE);

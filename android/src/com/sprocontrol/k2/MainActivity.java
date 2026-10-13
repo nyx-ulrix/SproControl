@@ -64,6 +64,7 @@ public class MainActivity extends Activity {
     BluetoothGatt gatt;
     BluetoothGattCharacteristic tx;
     ScanCallback scanCb;
+    boolean viaMac;   // this connect is a direct one to the remembered address (no scan, no location); scan if it fails
     String lastStatus;
     int gen;                 // connection generation: stale timeouts/callbacks compare against it
     boolean resumeLink;      // reconnect when the activity comes back
@@ -169,6 +170,12 @@ public class MainActivity extends Activity {
         if (adapter == null || !adapter.isEnabled()) { js("fail", "Turn Bluetooth on · tap to retry"); return; }
         // Already bonded (e.g. via HappyGo / nRF)? Connect straight away, no scan needed.
         for (BluetoothDevice d : adapter.getBondedDevices()) if (isK2(d.getName())) { open(d); return; }
+        // Reached before? Connect to that address directly: no scan, so no location prompt. Falls back to a scan.
+        String mac = K2Widget.prefs(this).getString("mac", "");
+        if (!mac.isEmpty() && !viaMac) {
+            try { viaMac = true; open(adapter.getRemoteDevice(mac)); return; } catch (IllegalArgumentException e) { viaMac = false; }
+        }
+        viaMac = false;
         if (!hasPerms(true)) return;
         BluetoothLeScanner s = adapter.getBluetoothLeScanner();
         if (s == null) { js("fail", "Turn Bluetooth on · tap to retry"); return; }
@@ -198,7 +205,10 @@ public class MainActivity extends Activity {
         final int my = ++gen;
         Log.i("K2", "connecting " + d.getName() + " " + d.getAddress());
         js("fail", "Connecting…");
-        main.postDelayed(() -> { if (my == gen && gatt != null && tx == null) { Log.i("K2", "connect timeout"); disconnect(); js("fail", "Connect timed out · tap to retry"); } }, 15000);
+        main.postDelayed(() -> { if (my == gen && gatt != null && tx == null) {
+            Log.i("K2", "connect timeout" + (viaMac ? ", scanning instead" : ""));
+            if (viaMac) { startScan(); return; }
+            disconnect(); js("fail", "Connect timed out · tap to retry"); } }, viaMac ? 8000 : 15000);
         gatt = d.connectGatt(this, false, gattCb, BluetoothDevice.TRANSPORT_LE);
     }
 
@@ -447,7 +457,9 @@ public class MainActivity extends Activity {
             if (state == BluetoothProfile.STATE_CONNECTED && status == BluetoothGatt.GATT_SUCCESS) g.discoverServices();
             else if (state == BluetoothProfile.STATE_DISCONNECTED || status != BluetoothGatt.GATT_SUCCESS) {
                 g.close();
-                main.post(() -> { if (g == gatt) { gatt = null; tx = null; js("gone", null); K2Widget.setLinked(MainActivity.this, false); } }); // lost the machine
+                main.post(() -> { if (g == gatt) { gatt = null; boolean fresh = tx == null && viaMac; tx = null;
+                    if (fresh) { startScan(); return; } // the remembered address did not answer: look for any K2
+                    js("gone", null); K2Widget.setLinked(MainActivity.this, false); } }); // lost the machine
             }
         }
 
@@ -471,6 +483,9 @@ public class MainActivity extends Activity {
             // PcmDevice.initConnect waits 300 ms after notify-on before its first command
             String name = g.getDevice().getName();
             main.postDelayed(() -> { if (g == gatt) js("ready", name); }, 300);
+            // Remember the address: later connects (app and widgets) go straight to it without a scan.
+            K2Widget.prefs(MainActivity.this).edit().putString("mac", g.getDevice().getAddress()).apply();
+            viaMac = false;
         }
 
         @Override public void onCharacteristicChanged(BluetoothGatt g, BluetoothGattCharacteristic c, byte[] v) { rx(v); }

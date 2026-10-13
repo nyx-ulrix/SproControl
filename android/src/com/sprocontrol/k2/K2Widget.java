@@ -129,8 +129,11 @@ public class K2Widget extends AppWidgetProvider {
     }
 
     /** Whether the widget shows the brew buttons (true) or only Search (false). */
+    /** Unlinked (app link dropped, tap failed): the one-button widget's cycle starts over at Connect → first step. */
     static void setLinked(Context c, boolean linked) {
-        prefs(c).edit().putBoolean("linked", linked).apply();
+        SharedPreferences.Editor e = prefs(c).edit().putBoolean("linked", linked);
+        if (!linked) e.putInt("oneIdx", 0);
+        e.apply();
         redraw(c);
     }
 
@@ -245,7 +248,9 @@ public class K2Widget extends AppWidgetProvider {
         void finish(String msg, int state) {
             if (finished) return;
             finished = true;
-            prefs(c).edit().putBoolean("linked", handled).apply(); // reached it -> brew buttons; else -> Search
+            SharedPreferences.Editor e = prefs(c).edit().putBoolean("linked", handled); // reached it -> brew buttons; else -> Search
+            if (!handled) e.putInt("oneIdx", 0); // and the one-button cycle starts over
+            e.apply();
             show(c, msg, state);
             if (gatt != null) { gatt.disconnect(); gatt.close(); gatt = null; }
             done.finish();

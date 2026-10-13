@@ -59,7 +59,7 @@ machine's own frames replayed: [docs/brew-demo.mp4](docs/brew-demo.mp4).
   one-cell widget: a square with a single button that steps through a cycle you compose in Settings from
   Purge, Heat & Brew, Extract, Heat and Stop (default purge → brew → stop → purge → stop); its only text is
   the profile a brew step will send. Connect shows until a status frame has arrived and Stop takes over
-  while the machine runs; once the app drops its link the widgets go back to Search / Connect. Each tap is
+  while the machine runs; whenever the link is lost the widgets go back to Search / Connect and the cycle restarts. Each tap is
   one short Bluetooth session: connect, read one status frame, send, disconnect. Nothing polls in the
   background.
 - **No brew on unconfirmed settings.** A brew starts only once the machine has read back all five

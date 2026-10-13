@@ -369,6 +369,7 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
       renderTimers();renderExt();
       if(!drag)pLevel=Math.max(1,Math.min(3,d[0]-FMIN+1));renderSegs();
       var got=[d[0],d[1],d[4]].concat(d.length>9?[d[7]]:[]);verify('param',got.join());lastParam=got;syncModeUI();
+      if(pendingCmd)setTimeout(runPending,350); // after the handshake settles (and the last-used preset is applied)
       updatePName(); // after pLevel above, so the match sees this reply's flow
       rememberState();
       if(first&&restorePending()&&!(state in STATE_MODE))applyRestore();
@@ -662,7 +663,7 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
             heat:['Heat',SI+'<path d="M12 3c2.5 3 4 5 4 7a4 4 0 0 1-8 0c0-2 1.5-4 4-7Z"/><path d="M6 20h12"/></svg>'],
             stop:['Stop','<svg viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="3.5"/></svg>']},
       UPI=SI+'<path d="m6 15 6-6 6 6"/></svg>',DNI=SI+'<path d="m6 9 6 6 6-6"/></svg>',
-      oneCfg={order:['purge','brew','stop','purge','stop'],profile:null};
+      oneCfg={order:['purge','stop','brew','stop','purge','stop'],profile:null};
   function loadOne(){if(!(window.AndroidBle&&AndroidBle.getOneWidget))return;
     try{var j=JSON.parse(AndroidBle.getOneWidget()||'null');
       if(j&&Array.isArray(j.order)){var o=j.order.filter(function(s){return STEP[s];});if(o.length)oneCfg={order:o,profile:validP(j.profile)?j.profile:null};}}catch(e){}}
@@ -791,6 +792,10 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
   function askMissing(){if(!connected||askTries++>=4)return;
     if(!gotTemp)send(C.GET_TEMP);if(!live)send(C.GET_PARAM);
     if(!gotTemp||!live)setTimeout(askMissing,1500);}
+  // A widget's command waits for the handshake (and the brew gate) like a tap on the page's own buttons.
+  var pendingCmd=null;
+  function runPending(){if(!pendingCmd||!connected||!live||!gotTemp)return;var cmd=pendingCmd;pendingCmd=null;
+    if(cmd==='stop'){if(mode)setMode(mode);}else if(cmd in MODE_IDX||cmd==='purge')setMode(cmd);}
   function ready(name){autoApply=true;gotTemp=false;askTries=0;app.classList.add('stale');
     connected=true;app.classList.remove('off');dot.className='dot connected';
     devName=name||'Ikape K2';showName();pencil.toggleAttribute('hidden',false);haptic([12,40,12]);
@@ -806,6 +811,7 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
     data:function(h){if(typeof h!=='string'||!/^(?:[0-9a-f]{2})+$/i.test(h))return;
       feed(h.match(/../g).map(function(x){return parseInt(x,16);}));},
     gone:disconnected,
+    widget:function(cmd){pendingCmd=String(cmd);runPending();}, // a widget tap while the app holds the link
     update:onUpdate,
     fail:function(msg){dot.className='dot';stName.textContent=String(msg).slice(0,60);}};
 

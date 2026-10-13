@@ -69,6 +69,15 @@ public class MainActivity extends Activity {
     int gen;                 // connection generation: stale timeouts/callbacks compare against it
     boolean resumeLink;      // reconnect when the activity comes back
     final Handler main = new Handler(Looper.getMainLooper());
+    static MainActivity shown; // the activity on screen, if any: widget taps hand their command to it while it holds the link
+
+    /** A widget tap while the app holds the link: the page sends the command (once its handshake is done). */
+    static boolean fromWidget(String cmd) {
+        MainActivity a = shown;
+        if (a == null || a.tx == null) return false;
+        a.js("widget", cmd);
+        return true;
+    }
     final Runnable idleDrop = this::sleepLink;
 
     @Override protected void onCreate(Bundle b) {
@@ -112,6 +121,7 @@ public class MainActivity extends Activity {
 
     /** Back on screen: cancel the idle drop; if the link was already dropped, pick it up again. */
     @Override protected void onStart() {
+        shown = this;
         super.onStart();
         main.removeCallbacks(idleDrop);
         web.onResume();
@@ -121,6 +131,7 @@ public class MainActivity extends Activity {
 
     /** Off screen: the link (and the widget's live status) stays for IDLE_MS, then sleepLink() runs. */
     @Override protected void onStop() {
+        if (shown == this) shown = null;
         main.removeCallbacks(idleDrop);
         main.postDelayed(idleDrop, IDLE_MS);
         super.onStop();

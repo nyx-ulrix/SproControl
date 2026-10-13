@@ -15,13 +15,13 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 /** One-cell square widget with a single button that walks a cycle the user composes in Settings: any sequence
- *  of Purge / Heat & Brew / Extract / Heat / Stop (default purge → brew → stop → purge → stop …). While not linked the
+ *  of Purge / Heat & Brew / Extract / Heat / Stop (default purge → stop → brew → stop → purge → stop …). While not linked the
  *  button is Connect; while the machine runs it is Stop regardless of the cycle. The only text is the profile a
  *  brew step will send; the other steps are icon-only. Each tap is one short BLE session. */
 public class K2OneWidget extends AppWidgetProvider {
     static final String TAP = "com.sprocontrol.k2.ONE_TAP";
     static final List<String> STEPS = Arrays.asList("purge", "brew", "extract", "heat", "stop");
-    static final String[] DEFAULT = {"purge", "brew", "stop", "purge", "stop"};
+    static final String[] DEFAULT = {"purge", "stop", "brew", "stop", "purge", "stop"};
 
     @Override public void onUpdate(Context c, AppWidgetManager m, int[] ids) { m.updateAppWidget(ids, views(c)); }
 
@@ -66,8 +66,7 @@ public class K2OneWidget extends AppWidgetProvider {
             case "extract": icon = R.drawable.ic_extract; label = name(K2Widget.profile(c), ""); break;
             default:        icon = R.drawable.ic_both;    label = name(brewProfile(c), "");
         }
-        String status = K2Widget.prefs(c).getString("status", "");
-        boolean searching = step.equals("connect") && (status.startsWith("Searching") || status.startsWith("Connecting"));
+        boolean searching = System.currentTimeMillis() < K2Widget.prefs(c).getLong("tapBusy", 0); // tap in progress
         v.setViewVisibility(R.id.obusy, searching ? View.VISIBLE : View.GONE); // spinner while a tap looks for the machine
         v.setViewVisibility(R.id.obtn, searching ? View.GONE : View.VISIBLE);
         v.setImageViewResource(R.id.obtn, icon);
@@ -94,13 +93,14 @@ public class K2OneWidget extends AppWidgetProvider {
         int idx = Math.floorMod(K2Widget.prefs(c).getInt("oneIdx", 0), o.length);
         switch (step) {
             case "connect": new K2Widget.Tap(c, -1, -1, goAsync()).run(); break;
-            case "purge":   advance(c, idx + 1); new K2Widget.Tap(c, 2, K2Widget.EXTRACTING, goAsync()).purge().run(); break;
-            case "brew":    advance(c, idx + 1); new K2Widget.Tap(c, 1, K2Widget.HOT_EXTRACTING, goAsync()).withProfile(brewProfile(c)).run(); break;
-            case "extract": advance(c, idx + 1); new K2Widget.Tap(c, 2, K2Widget.EXTRACTING, goAsync()).run(); break;
-            case "heat":    advance(c, idx + 1); new K2Widget.Tap(c, 0, K2Widget.HOT_WATERING, goAsync()).run(); break;
+            // The cycle only moves on once the machine has confirmed the command (Tap.then).
+            case "purge":   new K2Widget.Tap(c, 2, K2Widget.EXTRACTING, goAsync()).purge().then(() -> advance(c, idx + 1)).run(); break;
+            case "brew":    new K2Widget.Tap(c, 1, K2Widget.HOT_EXTRACTING, goAsync()).withProfile(brewProfile(c)).then(() -> advance(c, idx + 1)).run(); break;
+            case "extract": new K2Widget.Tap(c, 2, K2Widget.EXTRACTING, goAsync()).then(() -> advance(c, idx + 1)).run(); break;
+            case "heat":    new K2Widget.Tap(c, 0, K2Widget.HOT_WATERING, goAsync()).then(() -> advance(c, idx + 1)).run(); break;
             default: {      // stop: an explicit Stop step is used up; one forced by a running machine leaves the cycle where it is
-                if (o[idx].equals("stop")) advance(c, idx + 1);
-                new K2Widget.Tap(c, 2, K2Widget.EXTRACTING, goAsync()).stopOnly().run();
+                Runnable next = o[idx].equals("stop") ? () -> advance(c, idx + 1) : null;
+                new K2Widget.Tap(c, 2, K2Widget.EXTRACTING, goAsync()).stopOnly().then(next).run();
             }
         }
     }

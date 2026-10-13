@@ -57,11 +57,13 @@ machine's own frames replayed: [docs/brew-demo.mp4](docs/brew-demo.mp4).
 - **Two home-screen widgets.** The row widget: dimmed with a Search button until it has reached the
   machine, then Extract / Heat & Extract / Purge, and a running timer with Stop while brewing. The
   one-cell widget: a square with a single button that steps through a cycle you compose in Settings from
-  Purge, Heat & Brew, Extract, Heat and Stop (default purge → brew → stop → purge → stop); its only text is
+  Purge, Heat & Brew, Extract, Heat and Stop (default purge → stop → brew → stop → purge → stop); its only text is
   the profile a brew step will send. Connect shows until a status frame has arrived and Stop takes over
   while the machine runs; whenever the link is lost the widgets go back to Search / Connect and the cycle restarts. Each tap is
-  one short Bluetooth session: connect, read one status frame, send, disconnect. Nothing polls in the
-  background.
+  one short Bluetooth session: connect, read one status frame, send, wait for the machine's state to confirm
+  the command (a spinner meanwhile; the cycle only moves on once it has), disconnect. The widgets never scan,
+  so they never need location; while the app itself holds the link a tap hands the command to the app. Nothing
+  polls in the background.
 - **No brew on unconfirmed settings.** A brew starts only once the machine has read back all five
   settings it was sent (temperature, flow, pre-soak, hold, extraction). A rejected or unanswered set,
   or a machine error, greys the brew buttons in the app and stops a widget tap before the start frame.

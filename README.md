@@ -211,8 +211,9 @@ add: anyone in range who knows these frames can control it. Bonding gives link e
 | Writes occasionally dropped | Read back every set and resend up to three times |
 | "Not found" on the first scan | ColorOS location deny list; bonded-device shortcut, just-in-time location |
 | Location prompt on every connect (unbonded phone) | The machine's address is remembered after the first link; later connects, app and widgets, go to it directly without a scan |
-| Widget could not reach an unbonded K2 by address | The K2 may advertise a random address, which a plain address lookup cannot connect to: the address type is kept with the address, and the app bonds on the first link so later connects need neither a scan nor a lookup |
-| Widget waited for a status frame that never came | The K2 does not always push status unasked right after notify-on: the widget asks for the state itself, 300 ms after notify-on and each second until answered, as HappyGo does |
+| Widget could not reach an unbonded K2 by address | The K2 may advertise a random address, which a plain address lookup cannot connect to: the address type is kept with the address (the app never pairs with the machine) |
+| Widget waited for a status frame that never came | The K2 only starts its once-a-second status push after it has been given the clock (HappyGo's first command): the widget now sends the clock 300 ms after notify-on, then asks for the state each second; the first status frame arrives about 3 s after connecting |
+| Widget writes silently lost | The phone's stack answers 201 (busy) to a write queued right behind another; the widget checks the result and resends after 60 ms |
 | Widget taps fought the app for the single link | App publishes a short "hold" flag the widget respects |
 | App kept the link alive in the background | 30 s grace after leaving, then disconnect and pause the page |
 | Bundled font not loading in the APK | Private `https://` origin via `shouldInterceptRequest`; assets packaged with `jar` |

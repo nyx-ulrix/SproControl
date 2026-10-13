@@ -313,7 +313,9 @@ public class K2Widget extends AppWidgetProvider {
         @Override public void onDescriptorWrite(BluetoothGatt g, BluetoothGattDescriptor d, int status) {
             Log.i("K2", "widget: cccd written " + status);
             if (status != BluetoothGatt.GATT_SUCCESS) { MAIN.post(() -> finish("Not a K2?", -1)); return; }
-            for (int i = 0; i < 5; i++) MAIN.postDelayed(() -> { if (!handled && !finished) write(g, frame(0x00)); }, 300 + 1000L * i);
+            // HappyGo's initConnect: the clock first (the K2 starts its status push after it), then the state.
+            MAIN.postDelayed(() -> { if (!handled && !finished) write(g, timeFrame()); }, 300);
+            for (int i = 0; i < 5; i++) MAIN.postDelayed(() -> { if (!handled && !finished) write(g, frame(0x00)); }, 450 + 1000L * i);
         }
 
         // The K2 pushes a status frame about once a second; the first one decides start vs stop.
@@ -327,6 +329,7 @@ public class K2Widget extends AppWidgetProvider {
         /** Reassembles frames: a notification may hold two replies, or half of a long one (the app's log shows both). */
         void feed(BluetoothGatt g, byte[] v) {
             if (finished || v == null) return;
+            Log.i("K2", "widget rx " + hex(v));
             byte[] n = new byte[buf.length + v.length];
             System.arraycopy(buf, 0, n, 0, buf.length); System.arraycopy(v, 0, n, buf.length, v.length);
             buf = n;
@@ -345,13 +348,24 @@ public class K2Widget extends AppWidgetProvider {
             }
         }
 
+        static byte[] timeFrame() {
+            java.util.Calendar t = java.util.Calendar.getInstance();
+            int wd = t.get(java.util.Calendar.DAY_OF_WEEK) - 1; if (wd == 0) wd = 7;
+            return frame(0x04, wd, t.get(java.util.Calendar.MONTH) + 1, t.get(java.util.Calendar.DAY_OF_MONTH), t.get(java.util.Calendar.YEAR) - 2020,
+                    t.get(java.util.Calendar.HOUR_OF_DAY), t.get(java.util.Calendar.MINUTE), t.get(java.util.Calendar.SECOND));
+        }
+
         @SuppressWarnings({"MissingPermission", "deprecation"})
         void write(BluetoothGatt g, byte[] f) {
             if (finished || tx == null) return;
-            int type = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE;
-            if (Build.VERSION.SDK_INT >= 33) g.writeCharacteristic(tx, f, type);
-            else { tx.setWriteType(type); tx.setValue(f); g.writeCharacteristic(tx); }
+            int type = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE, rc;
+            if (Build.VERSION.SDK_INT >= 33) rc = g.writeCharacteristic(tx, f, type);
+            else { tx.setWriteType(type); tx.setValue(f); rc = g.writeCharacteristic(tx) ? 0 : -1; }
+            Log.i("K2", "widget tx " + hex(f) + " rc=" + rc);
+            if (rc != 0 && rc != -1) MAIN.postDelayed(() -> write(g, f), 60); // 201 = the stack was busy: send it again
         }
+
+        static String hex(byte[] v) { StringBuilder sb = new StringBuilder(); for (byte x : v) sb.append(String.format("%02x", x & 0xFF)); return sb.toString(); }
 
         void rx(BluetoothGatt g, byte[] v) {
             if (finished) return;

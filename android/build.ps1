@@ -24,7 +24,13 @@ Copy-Item "$here\..\fonts\*" "$out\assets\fonts\"
 & "$bt\aapt2.exe" compile --dir "$here\res" -o "$out\res.zip"
 if ($LASTEXITCODE) { throw 'aapt2 compile failed' }
 # assets are added with jar below: aapt2 -A on Windows writes "assets/fonts\x" (backslash) entries, which never load
-$link = @('link', '--manifest', "$here\AndroidManifest.xml", '-I', $jar, "$out\res.zip", '--java', "$out\gen", '-o', "$out\unsigned.apk")
+$manifest = "$here\AndroidManifest.xml"
+if ($Debug) {
+    # Debug builds export the one-button widget's receiver so a shell broadcast can stand in for a tap (adb testing); never in a release.
+    $manifest = "$out\AndroidManifest.debug.xml"
+    (Get-Content "$here\AndroidManifest.xml" -Raw).Replace('android:name=".K2OneWidget" android:exported="false"', 'android:name=".K2OneWidget" android:exported="true"') | Set-Content $manifest -Encoding utf8
+}
+$link = @('link', '--manifest', $manifest, '-I', $jar, "$out\res.zip", '--java', "$out\gen", '-o', "$out\unsigned.apk")
 if ($Debug) { $link += '--debug-mode' }   # android:debuggable; never in a release
 & "$bt\aapt2.exe" @link
 if ($LASTEXITCODE) { throw 'aapt2 link failed' }

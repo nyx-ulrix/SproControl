@@ -496,9 +496,6 @@ public class MainActivity extends Activity {
             // cannot reach): later connects, app and widgets, go straight to it without a scan.
             K2Widget.prefs(MainActivity.this).edit().putString("mac", g.getDevice().getAddress()).putInt("macType", K2Widget.addressType(g.getDevice())).apply();
             viaMac = false;
-            // Bond once: a bonded device needs neither a scan nor an address type, from the app or a widget.
-            try { if (g.getDevice().getBondState() == BluetoothDevice.BOND_NONE) { Log.i("K2", "bonding " + g.getDevice().createBond()); } }
-            catch (SecurityException e) { /* no CONNECT permission: stays unbonded */ }
         }
 
         @Override public void onCharacteristicChanged(BluetoothGatt g, BluetoothGattCharacteristic c, byte[] v) { rx(v); }

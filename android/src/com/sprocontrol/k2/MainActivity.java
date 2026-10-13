@@ -182,10 +182,8 @@ public class MainActivity extends Activity {
         // Already bonded (e.g. via HappyGo / nRF)? Connect straight away, no scan needed.
         for (BluetoothDevice d : adapter.getBondedDevices()) if (isK2(d.getName())) { open(d); return; }
         // Reached before? Connect to that address directly: no scan, so no location prompt. Falls back to a scan.
-        String mac = K2Widget.prefs(this).getString("mac", "");
-        if (!mac.isEmpty() && !viaMac) {
-            try { viaMac = true; open(adapter.getRemoteDevice(mac)); return; } catch (IllegalArgumentException e) { viaMac = false; }
-        }
+        BluetoothDevice known = viaMac ? null : K2Widget.knownDevice(this, adapter);
+        if (known != null) { viaMac = true; open(known); return; }
         viaMac = false;
         if (!hasPerms(true)) return;
         BluetoothLeScanner s = adapter.getBluetoothLeScanner();
@@ -494,9 +492,13 @@ public class MainActivity extends Activity {
             // PcmDevice.initConnect waits 300 ms after notify-on before its first command
             String name = g.getDevice().getName();
             main.postDelayed(() -> { if (g == gatt) js("ready", name); }, 300);
-            // Remember the address: later connects (app and widgets) go straight to it without a scan.
-            K2Widget.prefs(MainActivity.this).edit().putString("mac", g.getDevice().getAddress()).apply();
+            // Remember the address (and its type: the K2 may use a random one, which a plain address lookup
+            // cannot reach): later connects, app and widgets, go straight to it without a scan.
+            K2Widget.prefs(MainActivity.this).edit().putString("mac", g.getDevice().getAddress()).putInt("macType", K2Widget.addressType(g.getDevice())).apply();
             viaMac = false;
+            // Bond once: a bonded device needs neither a scan nor an address type, from the app or a widget.
+            try { if (g.getDevice().getBondState() == BluetoothDevice.BOND_NONE) { Log.i("K2", "bonding " + g.getDevice().createBond()); } }
+            catch (SecurityException e) { /* no CONNECT permission: stays unbonded */ }
         }
 
         @Override public void onCharacteristicChanged(BluetoothGatt g, BluetoothGattCharacteristic c, byte[] v) { rx(v); }

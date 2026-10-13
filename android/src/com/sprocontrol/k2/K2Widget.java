@@ -52,6 +52,26 @@ public class K2Widget extends AppWidgetProvider {
         return s;
     }
 
+    /** The address type the stack reports for a reached device (public unless it says random); falls back to public. */
+    static int addressType(BluetoothDevice d) {
+        try { Object t = d.getClass().getMethod("getAddressType").invoke(d); if (t instanceof Integer && (Integer) t == 1) return 1; }
+        catch (Exception e) { /* not available: public */ }
+        return 0;
+    }
+
+    /** The K2 reached before, without a scan: the bonded one, else the remembered address (with its type). */
+    @SuppressWarnings("MissingPermission")
+    static BluetoothDevice knownDevice(Context c, BluetoothAdapter ad) {
+        if (ad == null) return null;
+        try { for (BluetoothDevice d : ad.getBondedDevices()) if (MainActivity.isK2(d.getName())) return d; } catch (SecurityException e) { return null; }
+        String mac = prefs(c).getString("mac", "");
+        if (mac.isEmpty()) return null;
+        try {
+            if (Build.VERSION.SDK_INT >= 33) return ad.getRemoteLeDevice(mac, prefs(c).getInt("macType", 0) == 1 ? BluetoothDevice.ADDRESS_TYPE_RANDOM : BluetoothDevice.ADDRESS_TYPE_PUBLIC);
+            return ad.getRemoteDevice(mac);
+        } catch (IllegalArgumentException e) { return null; }
+    }
+
     static JSONObject profile(Context c) {
         try { String s = prefs(c).getString("profile", ""); return s.isEmpty() ? null : new JSONObject(s); }
         catch (Exception e) { return null; }
@@ -249,14 +269,10 @@ public class K2Widget extends AppWidgetProvider {
                 return;
             }
             BluetoothAdapter ad = ((BluetoothManager) c.getSystemService(Context.BLUETOOTH_SERVICE)).getAdapter();
-            BluetoothDevice dev = null;
-            try {
-                if (ad != null && ad.isEnabled()) for (BluetoothDevice d : ad.getBondedDevices()) if (MainActivity.isK2(d.getName())) dev = d;
-            } catch (SecurityException e) { finish("Open app once", -1); return; }
-            // Not bonded: the address the app last reached (any K2 the app has connected to).
-            String mac = prefs(c).getString("mac", "");
-            if (dev == null && ad != null && !mac.isEmpty()) { try { dev = ad.getRemoteDevice(mac); } catch (IllegalArgumentException e) { /* no device */ } }
-            if (dev == null) { finish(ad != null && ad.isEnabled() ? "Connect in app first" : "Bluetooth off", -1); return; }
+            if (ad == null || !ad.isEnabled()) { finish("Bluetooth off", -1); return; }
+            BluetoothDevice dev = knownDevice(c, ad);
+            if (dev == null) { finish("Connect in app first", -1); return; }
+            Log.i("K2", "widget " + name() + ": connecting " + dev.getAddress() + (dev.getBondState() == BluetoothDevice.BOND_BONDED ? " (bonded)" : ""));
             show(c, mode >= 0 ? "Connecting…" : "Searching…", -1);
             MAIN.postDelayed(() -> { if (!handled) finish(mode >= 0 ? "Not reachable" : "Not found", -1); }, TAP_TIMEOUT_MS);
             gatt = dev.connectGatt(c, false, this, BluetoothDevice.TRANSPORT_LE);
@@ -291,6 +307,13 @@ public class K2Widget extends AppWidgetProvider {
             g.setCharacteristicNotification(rx, true);
             if (Build.VERSION.SDK_INT >= 33) g.writeDescriptor(d, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
             else { d.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE); g.writeDescriptor(d); }
+        }
+
+        /** Notify-on done: like HappyGo, wait 300 ms, then ask for the state (again each second until it answers). */
+        @Override public void onDescriptorWrite(BluetoothGatt g, BluetoothGattDescriptor d, int status) {
+            Log.i("K2", "widget: cccd written " + status);
+            if (status != BluetoothGatt.GATT_SUCCESS) { MAIN.post(() -> finish("Not a K2?", -1)); return; }
+            for (int i = 0; i < 5; i++) MAIN.postDelayed(() -> { if (!handled && !finished) write(g, frame(0x00)); }, 300 + 1000L * i);
         }
 
         // The K2 pushes a status frame about once a second; the first one decides start vs stop.

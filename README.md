@@ -13,14 +13,17 @@ verified byte-for-byte against the real machine; the full write-up is in [PROTOC
   <img src="docs/img/app-settings.jpg" width="19%" alt="Settings: water temperature offset, purge, widget cycle">
 </p>
 <p align="center">
-  <img src="docs/img/widget-unlinked.png" width="32%" alt="Home-screen widget before it has reached the machine: dimmed, search only">
-  <img src="docs/img/widget-linked.png" width="32%" alt="Home-screen widget: Extract, Heat & Extract, Purge">
-  <img src="docs/img/widget-brewing.png" width="32%" alt="Home-screen widget while brewing: timer and Stop">
+  <img src="docs/img/widget-unlinked.png" width="32%" alt="Row widget before it has reached the machine: dimmed, search only">
+  <img src="docs/img/widget-linked.png" width="32%" alt="Row widget: Extract, Heat & Extract, Purge">
+  <img src="docs/img/widget-brewing.png" width="32%" alt="Row widget while brewing: timer and Stop">
 </p>
 <p align="center">
-  <img src="docs/img/widget-one-connect.png" width="19%" alt="One-cell widget before a tap has reached the machine: Connect, dimmed">
-  <img src="docs/img/widget-one-purge.png" width="19%" alt="One-cell widget on its Purge step: icon only">
-  <img src="docs/img/widget-one-brew.png" width="19%" alt="One-cell widget on its Heat &amp; Brew step: the profile it will send">
+  <img src="docs/img/widget-low.png" width="32%" alt="Row widget with the low-battery dot">
+  <img src="docs/img/widget-warn.png" width="32%" alt="Row widget while the machine reports dry burning">
+  <img src="docs/img/widget-searching.png" width="32%" alt="Row widget while a tap is reaching the machine">
+</p>
+<p align="center">
+  <img src="docs/img/widget-one-states.png" width="100%" alt="One-cell widget, left to right: Connect (dimmed), Purge, Stop, Heat &amp; Brew with the brew state, the same with the low-battery dot, machine warning, searching">
 </p>
 
 A 40 s mock brew (heating, pre-soak, hold, extraction, done) recorded on an emulator with the

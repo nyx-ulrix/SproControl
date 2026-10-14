@@ -74,7 +74,7 @@ public class K2OneWidget extends AppWidgetProvider {
         v.setImageViewResource(R.id.obtn, icon);
         v.setTextViewText(R.id.olabel, label);
         v.setViewVisibility(R.id.olabel, label.isEmpty() ? View.GONE : View.VISIBLE);
-        v.setFloat(R.id.obtn, "setAlpha", step.equals("connect") ? 0.45f : 1f); // dim the icon, not the box
+        v.setFloat(R.id.oneroot, "setAlpha", step.equals("connect") ? 0.45f : 1f);
         PendingIntent tap = PendingIntent.getBroadcast(c, 10, new Intent(c, K2OneWidget.class).setAction(TAP), PendingIntent.FLAG_IMMUTABLE);
         v.setOnClickPendingIntent(R.id.oneroot, tap);
         v.setOnClickPendingIntent(R.id.obtn, tap);

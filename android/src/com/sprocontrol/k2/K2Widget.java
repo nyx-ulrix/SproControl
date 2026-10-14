@@ -91,9 +91,7 @@ public class K2Widget extends AppWidgetProvider {
         boolean warn = err >= 1 && err <= 3; // dry burning, battery overheating, heating short circuit
         v.setTextViewText(R.id.wstat, (warn ? ERRORS[err] + " · " : "") + (prof == null ? status : status + " · " + prof.optString("n"))); // profile next to the temperature
         v.setViewVisibility(R.id.werr, warn ? android.view.View.VISIBLE : android.view.View.GONE);
-        // Dim the contents, not the box, while unlinked (a see-through box looked broken over a bright wallpaper).
-        v.setFloat(R.id.wtext, "setAlpha", linked ? 1f : 0.45f);
-        v.setFloat(R.id.wctl, "setAlpha", linked ? 1f : 0.45f);
+        v.setFloat(R.id.wroot, "setAlpha", linked ? 1f : 0.45f);
         int GONE = android.view.View.GONE, SHOWN = android.view.View.VISIBLE;
         // Timer: counts up while brewing; frozen at the final time for DONE_MS after.
         // Timestamps are wall-clock in storage and converted to the chronometer's uptime base here, so they survive a reboot.
@@ -455,6 +453,16 @@ public class K2Widget extends AppWidgetProvider {
                     prefs(c).edit().putString("restore", j.toString()).apply();
                 } catch (Exception e) { /* nothing kept; the profile still restores on the next brew */ }
                 go(g, purge, frame(0x02, 2, 1), true);
+                return;
+            }
+            // The K2 acknowledges a start/stop (0x02 reply, 01) within ~70 ms: that is the confirmation the next
+            // button waits for; the once-a-second state push would add up to a second.
+            if (confirmRunning != null && v[4] == 0x02 && v.length >= 6 && (v[5] & 0xFF) == 1) {
+                int st8 = confirmRunning ? runningState : 0;
+                if (lastStatus != null && lastStatus.length > 9) lastStatus[9] = (byte) st8; // the next tap must not see the old state
+                Log.i("K2", "widget: acknowledged at " + (System.currentTimeMillis() - t0) + " ms");
+                if (onDone != null) onDone.run();
+                finish(status, st8);
                 return;
             }
             String st = status(c, v);

@@ -267,6 +267,7 @@ public class K2Widget extends AppWidgetProvider {
         BluetoothGatt gatt; BluetoothGattCharacteristic tx; boolean handled, finished, isPurge, wantParams, stopOnly;
         JSONObject profileOverride, want;       // want: the profile a start must see read back before it goes out
         boolean needTemp, needParam; int lastState, tries; List<byte[]> setFrames;
+        boolean awake, probed, gotStatus;       // warm-up on a fresh link: clock acknowledged, a read answered, a status frame seen
         Boolean confirmRunning;                 // after the command: wait for a status frame saying running (true) / idle (false)
         Runnable onDone;                        // runs once the machine has confirmed the command (the cycle advances here)
         byte[] buf = new byte[0];               // notifications carry parts of frames, or several at once
@@ -361,12 +362,13 @@ public class K2Widget extends AppWidgetProvider {
         @Override public void onDescriptorWrite(BluetoothGatt g, BluetoothGattDescriptor d, int status) {
             Log.i("K2", "widget: cccd written " + status + " at " + (System.currentTimeMillis() - t0) + " ms");
             if (status != BluetoothGatt.GATT_SUCCESS) { MAIN.post(() -> finish("Not a K2?", -1)); return; }
-            // The K2 drops writes for about 400 ms after notify-on (HappyGo waits 300 ms before its first command).
-            // ...acting on the saved state only while it is fresh (two minutes); after a longer idle, wait for a real status frame.
-            boolean fresh = System.currentTimeMillis() - prefs(c).getLong("statusAt", 0) < 120_000;
-            if (mode >= 0 && fresh) MAIN.postDelayed(() -> { if (!handled && !finished) { handled = true; decide(g, savedState(prefs(c))); } }, 350);
-            MAIN.postDelayed(() -> write(g, timeFrame()), 1200);
-            for (int i = 0; i < 5; i++) MAIN.postDelayed(() -> { if (lastStatus == null && !finished) write(g, frame(0x00)); }, 900 + 1000L * i);
+            // The K2 drops writes for a few hundred ms after notify-on. The clock goes first (HappyGo's first command,
+            // and what starts the K2's status push); its acknowledgement proves the link is awake, and only then does
+            // the command (or, for Connect, a warm-up read) go out, so nothing is sent into the deaf window.
+            MAIN.postDelayed(() -> write(g, timeFrame()), 300);
+            MAIN.postDelayed(() -> { if (!awake && !finished) write(g, timeFrame()); }, 1300);
+            MAIN.postDelayed(() -> { if (!awake && !finished) { awake = true; afterWake(g); } }, 2300); // no ack at all: carry on regardless
+            for (int i = 0; i < 5; i++) MAIN.postDelayed(() -> { if (lastStatus == null && !finished) write(g, frame(0x00)); }, 1500 + 1000L * i);
         }
 
         @Override public void onCharacteristicChanged(BluetoothGatt g, BluetoothGattCharacteristic ch, byte[] v) { MAIN.post(() -> feed(g, v)); }
@@ -422,8 +424,25 @@ public class K2Widget extends AppWidgetProvider {
 
         static String hex(byte[] v) { StringBuilder sb = new StringBuilder(); for (byte x : v) sb.append(String.format("%02x", x & 0xFF)); return sb.toString(); }
 
+        /** The link is awake: a command tap acts on the saved state (while it is under two minutes old); Connect probes a read. */
+        void afterWake(BluetoothGatt g) {
+            boolean fresh = System.currentTimeMillis() - prefs(c).getLong("statusAt", 0) < 120_000;
+            if (mode >= 0) { if (fresh && !handled) { handled = true; decide(g, savedState(prefs(c))); } }
+            else { write(g, frame(0x17)); MAIN.postDelayed(() -> { if (!probed && !finished) write(g, frame(0x17)); }, 1200); }
+        }
+
+        /** Connect finishes only when the link has proven itself three ways, so the next tap is instant. */
+        void maybeConnected(BluetoothGatt g) {
+            if (mode >= 0 || finished || !(awake && probed && gotStatus)) return;
+            byte[] restore = runMode(lastState) >= 0 ? null : restoreFrame(c);
+            if (restore != null) { prefs(c).edit().remove("restore").apply(); sendOnly(g, java.util.Collections.singletonList(restore)); }
+            finish(status, lastState);
+        }
+
         void rx(BluetoothGatt g, byte[] v) {
             if (finished) return;
+            if (v[4] == 0x04 && !awake) { awake = true; Log.i("K2", "widget: awake at " + (System.currentTimeMillis() - t0) + " ms"); MAIN.postDelayed(() -> afterWake(g), 150); return; } // a breath after the ack: a query right behind it goes unanswered
+            if (mode < 0 && v[4] == 0x17) { probed = true; maybeConnected(g); return; }
             // Start, step 2: the read-backs of the settings just sent. All five must match or nothing starts.
             if (want != null) {
                 if (v[4] == 0x15 && v.length >= 8 && needTemp) {
@@ -489,9 +508,11 @@ public class K2Widget extends AppWidgetProvider {
             boolean stop = running >= 0;
             byte[] restore = stop ? null : restoreFrame(c);
             if (mode < 0) {
-                // Search: just reach it; if a purge left settings behind and the machine is idle, put them back now.
-                if (restore != null) { prefs(c).edit().remove("restore").apply(); sendOnly(g, java.util.Collections.singletonList(restore)); }
-                finish(status, now);
+                // Connect: done once the clock is acknowledged, a read answered and this status frame arrived (maybeConnected);
+                // the probe is given 2.5 s, after which the status frame alone counts.
+                gotStatus = true;
+                MAIN.postDelayed(() -> { if (!finished) { probed = awake = true; maybeConnected(g); } }, 2500);
+                maybeConnected(g);
                 return;
             }
             if (stop) { go(g, null, frame(0x02, running, 0), false); return; }
@@ -501,7 +522,8 @@ public class K2Widget extends AppWidgetProvider {
                 // Purge, step 1: ask for the current settings so they can be kept (step 2 above); fall back after 1.5 s.
                 wantParams = true;
                 write(g, frame(0x17));
-                MAIN.postDelayed(() -> { if (wantParams && !finished) { wantParams = false; go(g, purgeFrame(c), frame(0x02, 2, 1), true); } }, 1500);
+                MAIN.postDelayed(() -> { if (wantParams && !finished) write(g, frame(0x17)); }, 500);
+                MAIN.postDelayed(() -> { if (wantParams && !finished) { wantParams = false; go(g, purgeFrame(c), frame(0x02, 2, 1), true); } }, 1200);
                 return;
             }
             // Start, step 1: settings a purge replaced go back first, then the profile, then a read of both

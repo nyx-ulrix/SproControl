@@ -131,6 +131,7 @@ public class MainActivity extends Activity {
         web.onResume();
         web.resumeTimers();
         if (resumeLink) { resumeLink = false; startScan(); }
+        else if (gatt == null) main.postDelayed(() -> js("auto", null), 600); // opening the app looks for the machine by itself
     }
 
     /** Off screen: the link (and the widget's live status) stays for IDLE_MS, then sleepLink() runs. */

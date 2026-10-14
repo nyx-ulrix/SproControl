@@ -83,6 +83,8 @@ machine's own frames replayed: [docs/brew-demo.mp4](docs/brew-demo.mp4).
   sends the brew state, waits for the machine to read all five values back, and only then starts, so a
   purge can never leave a brew on the wrong settings. A widget command has half a second to be
   acknowledged; after that nothing more is sent and the button stays put.
+- **Connects by itself.** Opening the app, or coming back to it, starts the search for the machine; the
+  name bar still reconnects on a tap.
 - **Offline by design.** The app never touches the network on its own. The link is held while the
   app is on screen and for 30 s after you leave it, then dropped and the page is paused. Before
   connecting, the whole UI is shown greyed out with the values the machine last reported.

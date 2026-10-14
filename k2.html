@@ -856,7 +856,12 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
     gone:disconnected,
     widget:function(cmd){pendingCmd=String(cmd);runPending();}, // a widget tap while the app holds the link
     update:onUpdate,
-    fail:function(msg){dot.className='dot';stName.textContent=String(msg).slice(0,60);}};
+    fail:function(msg){dot.className='dot';stName.textContent=String(msg).slice(0,60);},
+    auto:autoConnect};
+  // The app searches by itself whenever it comes to the front and is not connected (page load and every resume).
+  var lastAuto=0;
+  function autoConnect(){if(connected||Date.now()-lastAuto<2000)return;lastAuto=Date.now();connect();}
+  if(window.AndroidBle)setTimeout(autoConnect,400);
 
   async function connect(){
     if(window.AndroidBle){if(connected)AndroidBle.disconnect();

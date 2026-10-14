@@ -336,7 +336,7 @@ public class MainActivity extends Activity {
     /** Purge settings from the page: {e: seconds 30..250, f: flow 0..9 or null for the brew's own}. */
     @JavascriptInterface public void setPurge(String json) {
         try {
-            JSONObject j = new JSONObject(json), o = new JSONObject().put("e", need(j, "e", 30, 250));
+            JSONObject j = new JSONObject(json), o = new JSONObject().put("e", need(j, "e", 5, 250)); // the K2 takes 5 s and up
             o.put("f", j.isNull("f") ? JSONObject.NULL : need(j, "f", 0, 9));
             K2Widget.prefs(this).edit().putString("purge", o.toString()).apply();
         } catch (Exception e) { /* ignored: the page only sends what it built */ }

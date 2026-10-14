@@ -36,7 +36,7 @@ machine's own frames replayed: [docs/brew-demo.mp4](docs/brew-demo.mp4).
   bar underneath. Every change is sent once, on release, then read back from the machine and
   confirmed in the title bar (`Temp 92°C saved`), or retried if the machine dropped the write.
 - **Heat, Heat & Extract, Extract, Purge.** Purge runs the pump alone with no pre-soak or hold, for
-  the seconds and flow chosen in Settings (30 s and the brew's own flow by default); the temperature is
+  the seconds (5–250; the K2 takes less than the 30 s minimum it reports) and flow chosen in Settings (30 s and the brew's own flow by default); the temperature is
   never touched. The settings it replaced are kept on the phone and put back when it ends or is stopped,
   or, if it was interrupted, on the next connect or widget tap; if the machine already holds the purge
   settings nothing is swapped. Any running mode turns the row into one Stop button. Connecting never

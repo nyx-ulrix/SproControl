@@ -6,12 +6,26 @@
     android:layout_height="match_parent">
 
 <!-- A fixed-height bar centred in the cell: launcher cells are often much taller than one row. -->
-<LinearLayout
-    android:id="@+id/wroot"
+<FrameLayout
     android:layout_width="match_parent"
     android:layout_height="66dp"
     android:layout_gravity="center_vertical"
-    android:background="@drawable/widget_bg"
+    android:background="@drawable/widget_bg">
+
+<ImageView
+    android:id="@+id/wlow"
+    android:layout_width="8dp"
+    android:layout_height="8dp"
+    android:layout_gravity="top|end"
+    android:layout_margin="7dp"
+    android:contentDescription="Battery low"
+    android:src="@drawable/dot_red"
+    android:visibility="gone" />
+
+<LinearLayout
+    android:id="@+id/wroot"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
     android:gravity="center_vertical"
     android:orientation="horizontal"
     android:paddingStart="14dp"
@@ -127,4 +141,5 @@
             android:src="@drawable/ic_search" />
     </LinearLayout>
 </LinearLayout>
+</FrameLayout>
 </FrameLayout>

@@ -121,6 +121,9 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
 .ibtn.wide{width:auto;padding:0 18px;background:var(--surface);color:var(--fg)}
 .ibtn.wide svg{width:20px;height:20px}
 #upd-install{color:var(--ready)}
+.batt.low{color:var(--heat);animation:lowflash 1s step-start infinite}
+@keyframes lowflash{50%{opacity:.3}}
+@media (prefers-reduced-motion: reduce){.batt.low{animation:none}}
 .srow{display:flex;align-items:center;gap:6px;padding:3px 0}
 .srow .sic{width:26px;height:26px;display:grid;place-items:center;flex:none}
 .srow .sic svg,.addrow .ibtn svg{width:22px;height:22px}
@@ -483,6 +486,7 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
   function renderReadout(){
     $('cur').textContent=cur===null?'--°':cur+'°';
     $('bpct').textContent=batt===null?'--%':batt+'%';
+    $('bpct').parentNode.classList.toggle('low',batt!==null&&batt<=30); // at 30 % and under: red, flashing
     renderTemp();}
 
   // Elapsed brew timer: from the machine's first running state to its end (any mode); the final time

@@ -60,14 +60,16 @@ machine's own frames replayed: [docs/brew-demo.mp4](docs/brew-demo.mp4).
   machine, then Extract / Heat & Extract / Purge, and a running timer with Stop while brewing. The
   one-cell widget: a square with a single button that steps through a cycle you compose in Settings from
   Purge, Heat & Brew, Extract, Heat and Stop (default purge → stop → brew → stop → purge → stop); its only text is
-  the brew state a brew step will send, and its Stop face is a battery with the charge inside. Connect shows until a status frame has arrived and Stop takes over
+  the brew state a brew step will send. Both widgets show a small red dot at their top right while the
+  battery is under 30 %. A widget tap always wins: if the app holds the link, the app drops it
+  and closes, and the tap runs on the widget's own link. Connect shows until a status frame has arrived and Stop takes over
   while the machine runs; whenever the link is lost the widgets go back to Search / Connect and the cycle restarts. Each tap is
   one Bluetooth session: connect, send, wait for the machine's state to confirm the command (a spinner
   meanwhile; the cycle only moves on once it has). The link then stays open for a minute after the last tap,
   held by a small foreground service, so the next tap sends within about 10 ms instead of reconnecting; a tap
   on a cold link sends about 1 s after the touch. The widgets never scan, so they never need location; while
-  the app itself holds the link a tap hands the command to the app. A quiet minute drops the link and the
-  service, and nothing polls in the background.
+  the app itself holds the link, the app lets go and closes so the tap can run. A quiet minute drops the
+  link and the service, and nothing polls in the background.
 - **No brew on unconfirmed settings.** In the app a brew starts only once the machine has read back all
   five settings it was sent (temperature, flow, pre-soak, hold, extraction); a rejected or unanswered
   set, or a machine error, greys the brew buttons.

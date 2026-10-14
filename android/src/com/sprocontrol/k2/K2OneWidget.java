@@ -72,15 +72,11 @@ public class K2OneWidget extends AppWidgetProvider {
         boolean searching = System.currentTimeMillis() < K2Widget.prefs(c).getLong("tapBusy", 0); // tap in progress
         int err = K2Widget.prefs(c).getInt("err", 0);
         v.setViewVisibility(R.id.obusy, searching ? View.VISIBLE : View.GONE); // spinner while a tap looks for the machine
-        boolean battery = step.equals("stop") && !searching && err < 1; // the Stop face: a battery with the charge inside
-        v.setViewVisibility(R.id.obtn, searching || battery ? View.GONE : View.VISIBLE);
-        v.setViewVisibility(R.id.ostop, battery ? View.VISIBLE : View.GONE);
+        v.setViewVisibility(R.id.obtn, searching ? View.GONE : View.VISIBLE);
         int batt = K2Widget.prefs(c).getInt("batt", -1);
-        v.setTextViewText(R.id.obatt, batt < 0 ? "" : batt + "%");
-        v.setImageViewResource(R.id.obattIcon, batt >= 30 || batt < 0 ? R.drawable.ic_batt_ok : R.drawable.ic_batt); // green down to 30 %, red below
+        v.setViewVisibility(R.id.olow, batt >= 0 && batt < 30 ? View.VISIBLE : View.GONE); // red dot: battery under 30 %
         if (err >= 1 && err <= 3) icon = R.drawable.ic_warn; // the machine reports dry burning / overheating / a short: warn instead of the step
         v.setImageViewResource(R.id.obtn, icon);
-        v.setOnClickPendingIntent(R.id.ostop, tap);
         v.setTextViewText(R.id.olabel, label);
         v.setViewVisibility(R.id.olabel, label.isEmpty() ? View.GONE : View.VISIBLE);
         v.setFloat(R.id.oneroot, "setAlpha", step.equals("connect") ? 0.45f : 1f);

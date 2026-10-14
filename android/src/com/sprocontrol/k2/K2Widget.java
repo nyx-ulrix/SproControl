@@ -241,7 +241,7 @@ public class K2Widget extends AppWidgetProvider {
         if (b != null) f = b.optInt("f", 1);
         try { JSONObject j = new JSONObject(prefs(c).getString("purge", "{}")); if (!j.isNull("f")) f = j.getInt("f"); e = j.optInt("e", 30); }
         catch (Exception x) { /* defaults */ }
-        if (ownSecs >= 5 && ownSecs <= 250) e = ownSecs; // this step's own seconds
+        if (ownSecs >= 1 && ownSecs <= 250) e = ownSecs; // this step's own seconds
         return frame(0x18, f, 0, 0, e);
     }
 

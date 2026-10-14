@@ -253,7 +253,7 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
     </div>
     <div class="sset" id="purges">
       <div class="lab"><span>Purge</span></div>
-      <div class="cal"><span class="lab2">Water for</span><input id="purge-e" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="3" aria-label="Purge seconds (5 to 250)"><span class="lab2">s</span></div>
+      <div class="cal"><span class="lab2">Water for</span><input id="purge-e" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="3" aria-label="Purge seconds (1 to 250)"><span class="lab2">s</span></div>
       <div class="cal"><span class="lab2">Flow</span><select id="purge-f" aria-label="Purge flow"><option value="">Same as brew</option><option value="0">Low</option><option value="1">Medium</option><option value="2">High</option></select></div>
       <p>Purge runs the pump with no pre-soak or hold and never touches the temperature. The brew settings come back when it ends or is stopped.</p>
     </div>
@@ -663,12 +663,12 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
   offbar.addEventListener('pointerup',offUp);offbar.addEventListener('pointercancel',offUp);
   // Purge: seconds of water and the flow (null = the brew's own), on this phone and in the widgets' prefs.
   function purgeCfg(){try{var p=JSON.parse(localStorage.getItem('k2-purge'));
-      if(p&&typeof p.e==='number')return {e:Math.max(5,Math.min(250,p.e|0)),f:[0,1,2].indexOf(p.f)>=0?p.f:null};}catch(x){}return {e:30,f:null};}
+      if(p&&typeof p.e==='number')return {e:Math.max(1,Math.min(250,p.e|0)),f:[0,1,2].indexOf(p.f)>=0?p.f:null};}catch(x){}return {e:30,f:null};}
   function savePurge(p){try{localStorage.setItem('k2-purge',JSON.stringify(p));}catch(e){}
     if(window.AndroidBle&&AndroidBle.setPurge)AndroidBle.setPurge(JSON.stringify(p));}
   function renderPurge(){var p=purgeCfg();$('purge-e').value=p.e;$('purge-f').value=p.f===null?'':String(p.f);}
   // The seconds field is only clamped once typing is over (blur / Enter): rewriting it per keystroke made it stick at 30.
-  function purgeChanged(fix){var f=$('purge-f').value,raw=Math.round(+$('purge-e').value),e=Math.max(5,Math.min(250,raw||30)); // the K2 accepts from 5 s, whatever range it reports
+  function purgeChanged(fix){var f=$('purge-f').value,raw=Math.round(+$('purge-e').value),e=Math.max(1,Math.min(250,raw||30)); // the K2 stores any 0-255 whatever range it reports; 1-250 here
     if(fix)$('purge-e').value=e;savePurge({e:e,f:f===''?null:+f});}
   $('purge-e').addEventListener('input',function(){purgeChanged(false);});
   $('purge-e').addEventListener('change',function(){purgeChanged(false);});
@@ -699,7 +699,7 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
   function loadOne(){if(!(window.AndroidBle&&AndroidBle.getOneWidget))return;
     try{var j=JSON.parse(AndroidBle.getOneWidget()||'null');
       if(j&&Array.isArray(j.order)){var o=j.order.filter(function(s){return STEP[s];});
-        var sc=Array.isArray(j.secs)?j.secs.map(function(v){return typeof v==='number'&&v>=5&&v<=250?v:null;}):[];
+        var sc=Array.isArray(j.secs)?j.secs.map(function(v){return typeof v==='number'&&v>=1&&v<=250?v:null;}):[];
         if(o.length)oneCfg={order:o,secs:sc,profile:null};}}catch(e){}}
   function saveOne(){if(window.AndroidBle&&AndroidBle.setOneWidget)AndroidBle.setOneWidget(JSON.stringify(oneCfg));renderOne();}
   function renderOne(){var list=$('onesteps');
@@ -710,9 +710,9 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
       '<button class="ibtn" data-del="'+i+'" aria-label="Remove"'+(oneCfg.order.length<2?' disabled':'')+'>'+DEL+'</button></div>';}).join('');
     Array.prototype.forEach.call(list.querySelectorAll('.snm'),function(el,i){el.textContent=STEP[oneCfg.order[i]][0];});
     Array.prototype.forEach.call(list.querySelectorAll('.psec'),function(el){var i=+el.dataset.sec,v=oneCfg.secs[i];el.value=v?v:'';el.placeholder=purgeCfg().e;});}
-  // A Purge step's own seconds: kept as typed, clamped (5-250) and saved when the field is left; blank = the Purge card's.
+  // A Purge step's own seconds: kept as typed, clamped (1-250) and saved when the field is left; blank = the Purge card's.
   function secChanged(el,fix){var i=+el.dataset.sec,raw=Math.round(+el.value);while(oneCfg.secs.length<oneCfg.order.length)oneCfg.secs.push(null);
-    oneCfg.secs[i]=el.value.trim()===''||!raw?null:Math.max(5,Math.min(250,raw));if(fix){el.value=oneCfg.secs[i]||'';saveOne();}}
+    oneCfg.secs[i]=el.value.trim()===''||!raw?null:Math.max(1,Math.min(250,raw));if(fix){el.value=oneCfg.secs[i]||'';saveOne();}}
   $('onesteps').addEventListener('input',function(e){if(e.target.classList.contains('psec'))secChanged(e.target,false);});
   $('onesteps').addEventListener('focusout',function(e){if(e.target.classList.contains('psec'))secChanged(e.target,true);});
   $('onesteps').addEventListener('keydown',function(e){if(e.key==='Enter'&&e.target.classList.contains('psec')){secChanged(e.target,true);e.target.blur();}});
@@ -770,7 +770,7 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
   var purgeT0=0,purgeS=30;
   function purge(){if(!connected||!live||mode)return;
     var pc=purgeCfg(),cur=uiParams(),f=pc.f===null?cur[0]:Math.max(FMIN,Math.min(FMAX,pc.f)),
-        e=params.ext?Math.max(5,Math.min(params.ext[2],pc.e)):null, // the reported minimum (30 s) is not enforced by the machine
+        e=params.ext?Math.max(1,Math.min(params.ext[2],pc.e)):null, // the reported minimum (30 s) is not enforced by the machine
         wantP=[f,params.soak[1],params.stand[1]].concat(e===null?[]:[e]);
     // The temperature is never touched. If the machine already holds the purge settings there is nothing
     // to swap or put back; otherwise keep the brew settings and check flow / pre-soak / hold on the way in.

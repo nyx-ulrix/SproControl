@@ -250,9 +250,14 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
     </div>
     <div class="sset" id="purges">
       <div class="lab"><span>Purge</span></div>
-      <div class="cal"><span class="lab2">Water for</span><input id="purge-e" type="number" inputmode="numeric" min="30" max="250" step="1" aria-label="Purge seconds"><span class="lab2">s</span></div>
+      <div class="cal"><span class="lab2">Water for</span><input id="purge-e" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="3" aria-label="Purge seconds (30 to 250)"><span class="lab2">s</span></div>
       <div class="cal"><span class="lab2">Flow</span><select id="purge-f" aria-label="Purge flow"><option value="">Same as brew</option><option value="0">Low</option><option value="1">Medium</option><option value="2">High</option></select></div>
       <p>Purge runs the pump with no pre-soak or hold and never touches the temperature. The brew settings come back when it ends or is stopped.</p>
+    </div>
+    <div class="sset" id="batts">
+      <div class="lab"><span>Battery</span></div>
+      <div class="cal"><span class="lab2">Warn under</span><input id="lowbatt" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="2" aria-label="Low battery percent (5 to 90)"><span class="lab2">%</span></div>
+      <p>From this charge down the battery readout here flashes red and both widgets show a red dot.</p>
     </div>
     <div class="sset" id="onew" hidden>
       <div class="lab"><span>Widgets</span></div>
@@ -486,7 +491,7 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
   function renderReadout(){
     $('cur').textContent=cur===null?'--°':cur+'°';
     $('bpct').textContent=batt===null?'--%':batt+'%';
-    $('bpct').parentNode.classList.toggle('low',batt!==null&&batt<=30); // at 30 % and under: red, flashing
+    $('bpct').parentNode.classList.toggle('low',batt!==null&&batt<=lowBatt()); // at the threshold and under: red, flashing
     renderTemp();}
 
   // Elapsed brew timer: from the machine's first running state to its end (any mode); the final time
@@ -663,10 +668,21 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
   function purgeChanged(fix){var f=$('purge-f').value,raw=Math.round(+$('purge-e').value),e=Math.max(30,Math.min(250,raw||30));
     if(fix)$('purge-e').value=e;savePurge({e:e,f:f===''?null:+f});}
   $('purge-e').addEventListener('input',function(){purgeChanged(false);});
+  $('purge-e').addEventListener('change',function(){purgeChanged(false);});
   $('purge-e').addEventListener('blur',function(){purgeChanged(true);});
   $('purge-e').addEventListener('keydown',function(e){if(e.key==='Enter'){purgeChanged(true);$('purge-e').blur();}});
   $('purge-f').addEventListener('change',function(){purgeChanged(true);});
-  $('gear').addEventListener('click',function(){renderOff();renderPurge();if(!$('onew').hidden){loadOne();renderOne();}$('settings').hidden=false;});
+  // Low-battery threshold (percent): the readout flashes and the widgets show their dot from here down.
+  function lowBatt(){var n=30;try{n=parseInt(localStorage.getItem('k2-lowbatt'),10);}catch(e){}return isFinite(n)&&n>=5&&n<=90?n:30;}
+  function renderLow(){$('lowbatt').value=lowBatt();}
+  function lowChanged(fix){var raw=Math.round(+$('lowbatt').value),n=Math.max(5,Math.min(90,raw||30));
+    if(fix)$('lowbatt').value=n;try{localStorage.setItem('k2-lowbatt',n);}catch(e){}
+    if(window.AndroidBle&&AndroidBle.setLowBatt)AndroidBle.setLowBatt(n);renderReadout();}
+  $('lowbatt').addEventListener('input',function(){lowChanged(false);});
+  $('lowbatt').addEventListener('change',function(){lowChanged(false);});
+  $('lowbatt').addEventListener('blur',function(){lowChanged(true);});
+  $('lowbatt').addEventListener('keydown',function(e){if(e.key==='Enter'){lowChanged(true);$('lowbatt').blur();}});
+  $('gear').addEventListener('click',function(){renderOff();renderPurge();renderLow();if(!$('onew').hidden){loadOne();renderOne();}$('settings').hidden=false;});
 
   // One-button widget: the cycle of steps and the profile for Heat & Brew, kept by the app (prefs "one").
   var SI='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">',

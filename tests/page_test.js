@@ -3,7 +3,7 @@
 // It feeds the page frames captured from a live K2 and checks what the page decodes and sends.
 (async function () {
   const sent = [];
-  window.AndroidBle = { write: h => sent.push(h), connect() {}, disconnect() {}, setName() {}, setProfile() {}, setOffset() {}, setPurge() {} };
+  window.AndroidBle = { write: h => sent.push(h), connect() {}, disconnect() {}, setName() {}, setProfile() {}, setOffset() {}, setPurge() {}, setLowBatt() {} };
   const k = window.__k2, sleep = ms => new Promise(r => setTimeout(r, ms)), $ = id => document.getElementById(id);
   const fr = (cmd, data) => { const d = [0x7e, 0, data.length + 5, 0, cmd, ...data]; d[3] = d.reduce((a, b) => a + b, 0) & 255; return new Uint8Array(d); };
   const hx = s => new Uint8Array(s.match(/../g).map(x => parseInt(x, 16)));

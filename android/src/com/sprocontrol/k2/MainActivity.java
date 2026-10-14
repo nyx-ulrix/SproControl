@@ -315,6 +315,13 @@ public class MainActivity extends Activity {
 
     @JavascriptInterface public String pendingRestore() { return K2Widget.prefs(this).getString("restore", ""); }
 
+    /** Low-battery threshold (percent) from Settings; the widgets show their dot below it. */
+    @JavascriptInterface public void setLowBatt(int n) {
+        if (n < 5 || n > 90) return;
+        K2Widget.prefs(this).edit().putInt("lowBatt", n).apply();
+        K2Widget.redraw(this);
+    }
+
     /** The brew state: the five values this app just set on the machine and saw read back. Widgets brew with exactly these. */
     @JavascriptInterface public void setBrewState(String json) {
         try {

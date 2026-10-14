@@ -60,8 +60,8 @@ machine's own frames replayed: [docs/brew-demo.mp4](docs/brew-demo.mp4).
   machine, then Extract / Heat & Extract / Purge, and a running timer with Stop while brewing. The
   one-cell widget: a square with a single button that steps through a cycle you compose in Settings from
   Purge, Heat & Brew, Extract, Heat and Stop (default purge → stop → brew → stop → purge → stop); its only text is
-  the brew state a brew step will send. Both widgets show a small red dot at their top right while the
-  battery is under 30 %. A widget tap always wins: if the app holds the link, the app drops it
+  the brew state a brew step will send. Both widgets show a small red dot at their top right, and the
+  app's battery readout flashes red, from the charge set in Settings (30 % by default) down. A widget tap always wins: if the app holds the link, the app drops it
   and closes, and the tap runs on the widget's own link. Connect shows until a status frame has arrived and Stop takes over
   while the machine runs; whenever the link is lost the widgets go back to Search / Connect and the cycle restarts. Each tap is
   one Bluetooth session: connect, send, wait for the machine's state to confirm the command (a spinner

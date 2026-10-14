@@ -74,7 +74,7 @@ public class K2OneWidget extends AppWidgetProvider {
         v.setViewVisibility(R.id.obusy, searching ? View.VISIBLE : View.GONE); // spinner while a tap looks for the machine
         v.setViewVisibility(R.id.obtn, searching ? View.GONE : View.VISIBLE);
         int batt = K2Widget.prefs(c).getInt("batt", -1);
-        v.setViewVisibility(R.id.olow, batt >= 0 && batt < 30 ? View.VISIBLE : View.GONE); // red dot: battery under 30 %
+        v.setViewVisibility(R.id.olow, batt >= 0 && batt <= K2Widget.prefs(c).getInt("lowBatt", 30) ? View.VISIBLE : View.GONE); // red dot: battery at the threshold or under
         if (err >= 1 && err <= 3) icon = R.drawable.ic_warn; // the machine reports dry burning / overheating / a short: warn instead of the step
         v.setImageViewResource(R.id.obtn, icon);
         v.setTextViewText(R.id.olabel, label);

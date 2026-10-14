@@ -92,7 +92,7 @@ public class K2Widget extends AppWidgetProvider {
         v.setTextViewText(R.id.wstat, (warn ? ERRORS[err] + " · " : "") + (prof == null ? status : status + " · " + prof.optString("n"))); // profile next to the temperature
         v.setViewVisibility(R.id.werr, warn ? android.view.View.VISIBLE : android.view.View.GONE);
         int batt = p.getInt("batt", -1);
-        v.setViewVisibility(R.id.wlow, batt >= 0 && batt < 30 ? android.view.View.VISIBLE : android.view.View.GONE); // red dot: battery under 30 %
+        v.setViewVisibility(R.id.wlow, batt >= 0 && batt <= p.getInt("lowBatt", 30) ? android.view.View.VISIBLE : android.view.View.GONE); // red dot: battery at the threshold or under
         v.setFloat(R.id.wroot, "setAlpha", linked ? 1f : 0.45f);
         int GONE = android.view.View.GONE, SHOWN = android.view.View.VISIBLE;
         // Timer: counts up while brewing; frozen at the final time for DONE_MS after.

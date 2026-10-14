@@ -75,7 +75,9 @@ public class K2OneWidget extends AppWidgetProvider {
         boolean battery = step.equals("stop") && !searching && err < 1; // the Stop face: a battery with the charge inside
         v.setViewVisibility(R.id.obtn, searching || battery ? View.GONE : View.VISIBLE);
         v.setViewVisibility(R.id.ostop, battery ? View.VISIBLE : View.GONE);
-        v.setTextViewText(R.id.obatt, K2Widget.prefs(c).getInt("batt", -1) < 0 ? "" : K2Widget.prefs(c).getInt("batt", 0) + "%");
+        int batt = K2Widget.prefs(c).getInt("batt", -1);
+        v.setTextViewText(R.id.obatt, batt < 0 ? "" : batt + "%");
+        v.setImageViewResource(R.id.obattIcon, batt >= 30 || batt < 0 ? R.drawable.ic_batt_ok : R.drawable.ic_batt); // green down to 30 %, red below
         if (err >= 1 && err <= 3) icon = R.drawable.ic_warn; // the machine reports dry burning / overheating / a short: warn instead of the step
         v.setImageViewResource(R.id.obtn, icon);
         v.setOnClickPendingIntent(R.id.ostop, tap);

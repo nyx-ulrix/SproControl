@@ -71,16 +71,19 @@ public class MainActivity extends Activity {
     final Handler main = new Handler(Looper.getMainLooper());
     static MainActivity shown; // the activity on screen, if any: widget taps hand their command to it while it holds the link
 
-    /** A widget tap while the app holds the link: the page sends the command (once its handshake is done). */
-    static boolean fromWidget(String cmd) {
-        MainActivity a = shown;
-        if (a == null || a.tx == null) return false;
-        a.js("widget", cmd);
+    static MainActivity instance; // the activity, while it exists (the link lives with it)
+
+    /** A widget tap while the app holds the link: the app lets go and closes, so the widget can take the machine. */
+    static boolean releaseLink() {
+        MainActivity a = instance;
+        if (a == null) return false;
+        a.main.post(() -> { Log.i("K2", "widget takes over: app link dropped, app closed"); a.dropLink(); a.finishAndRemoveTask(); });
         return true;
     }
     final Runnable idleDrop = this::sleepLink;
 
     @Override protected void onCreate(Bundle b) {
+        instance = this;
         super.onCreate(b);
         adapter = ((BluetoothManager) getSystemService(BLUETOOTH_SERVICE)).getAdapter();
         boolean debuggable = (getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0;
@@ -147,7 +150,7 @@ public class MainActivity extends Activity {
         web.pauseTimers();
     }
 
-    @Override protected void onDestroy() { main.removeCallbacks(idleDrop); dropLink(); web.destroy(); super.onDestroy(); }
+    @Override protected void onDestroy() { if (instance == this) instance = null; main.removeCallbacks(idleDrop); dropLink(); web.destroy(); super.onDestroy(); }
 
     /** Call into the page. The argument is JSON-quoted, so a hostile device name cannot become code. */
     void js(String fn, String arg) {

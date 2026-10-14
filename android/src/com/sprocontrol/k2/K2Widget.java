@@ -282,6 +282,7 @@ public class K2Widget extends AppWidgetProvider {
         Tap queued;                             // a tap that arrived while the delegate was still busy: runs next
         Tap link;                               // the session whose link this tap rides (null: its own)
         boolean awake, probed, gotStatus;       // warm-up on a fresh link: clock acknowledged, a read answered, a status frame seen
+        boolean tookOver;                       // this tap already asked the app to let go of the machine
         long t0 = System.currentTimeMillis();
         String status;
 
@@ -299,11 +300,14 @@ public class K2Widget extends AppWidgetProvider {
         @SuppressWarnings("MissingPermission")
         void run() {
             prefs(c).edit().putLong("tapBusy", System.currentTimeMillis() + TAP_TIMEOUT_MS + 7000).apply(); // spinner until finish()
-            // The app holds the only link the K2 accepts: hand the command to it instead of opening a second one.
-            if (System.currentTimeMillis() < prefs(c).getLong("appHold", 0)) {
-                handled = true;
-                if (mode >= 0 && MainActivity.fromWidget(name())) { if (onDone != null) onDone.run(); finish("Sent via app", -1); }
-                else finish("Use the app", -1);
+            // The app holds the only link the K2 accepts: the widget wins. The app drops its link and closes, and
+            // this tap runs on its own link a moment later.
+            if (!tookOver && System.currentTimeMillis() < prefs(c).getLong("appHold", 0)) {
+                tookOver = true;
+                Log.i("K2", "widget " + name() + ": taking the machine over from the app");
+                MainActivity.releaseLink();
+                prefs(c).edit().putLong("appHold", 0).apply();
+                MAIN.postDelayed(this::run, 700);
                 return;
             }
             LinkService.touch(c); // keeps the process (and the link below) alive for a minute after this tap

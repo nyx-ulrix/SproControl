@@ -39,7 +39,9 @@ machine's own frames replayed: [docs/brew-demo.mp4](docs/brew-demo.mp4).
   the seconds and flow chosen in Settings (30 s and the brew's own flow by default); the temperature is
   never touched. The settings it replaced are kept on the phone and put back when it ends or is stopped,
   or, if it was interrupted, on the next connect or widget tap; if the machine already holds the purge
-  settings nothing is swapped. Any running mode turns the row into one Stop button.
+  settings nothing is swapped. Any running mode turns the row into one Stop button. Connecting never
+  changes what the machine holds: the app adopts the machine's settings and names them if a preset
+  matches.
 - **Live readout.** Water temperature, battery and charging state from the machine's status frames
   (about one per second). While heating, the preset part of the arc turns grey and the colour climbs
   with the water temperature, with bubbles rising from it.
@@ -58,7 +60,7 @@ machine's own frames replayed: [docs/brew-demo.mp4](docs/brew-demo.mp4).
   machine, then Extract / Heat & Extract / Purge, and a running timer with Stop while brewing. The
   one-cell widget: a square with a single button that steps through a cycle you compose in Settings from
   Purge, Heat & Brew, Extract, Heat and Stop (default purge → stop → brew → stop → purge → stop); its only text is
-  the profile a brew step will send. Connect shows until a status frame has arrived and Stop takes over
+  the brew state a brew step will send, and its Stop face is a battery with the charge inside. Connect shows until a status frame has arrived and Stop takes over
   while the machine runs; whenever the link is lost the widgets go back to Search / Connect and the cycle restarts. Each tap is
   one Bluetooth session: connect, send, wait for the machine's state to confirm the command (a spinner
   meanwhile; the cycle only moves on once it has). The link then stays open for a minute after the last tap,
@@ -68,10 +70,14 @@ machine's own frames replayed: [docs/brew-demo.mp4](docs/brew-demo.mp4).
   service, and nothing polls in the background.
 - **No brew on unconfirmed settings.** In the app a brew starts only once the machine has read back all
   five settings it was sent (temperature, flow, pre-soak, hold, extraction); a rejected or unanswered
-  set, or a machine error, greys the brew buttons. A widget brew sends no settings at all: it runs with
-  what is on the machine (what the app last set), which the one-cell button shows as
-  `pre-soak • hold • temperature`. A widget command has half a second to be acknowledged; after that
-  nothing more is sent and the button stays put.
+  set, or a machine error, greys the brew buttons.
+- **The widgets keep two states and nothing else.** The *brew state* is the five values the app last set
+  on the machine and saw read back; only the app changes it (choose a preset, or drag a meter), and the
+  one-cell button shows it as `pre-soak • hold • temperature`. The *purge state* is the flow and seconds
+  from Settings with no pre-soak or hold. A widget purge sends the purge state and starts; a widget brew
+  sends the brew state, waits for the machine to read all five values back, and only then starts, so a
+  purge can never leave a brew on the wrong settings. A widget command has half a second to be
+  acknowledged; after that nothing more is sent and the button stays put.
 - **Offline by design.** The app never touches the network on its own. The link is held while the
   app is on screen and for 30 s after you leave it, then dropped and the page is paused. Before
   connecting, the whole UI is shown greyed out with the values the machine last reported.

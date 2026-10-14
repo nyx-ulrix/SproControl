@@ -303,6 +303,7 @@ public class MainActivity extends Activity {
                 JSONObject j = new JSONObject(json), o = new JSONObject();
                 o.put("f", need(j, "f", 0, 9)).put("s", need(j, "s", 0, 255)).put("h", need(j, "h", 0, 255));
                 o.put("e", j.isNull("e") ? JSONObject.NULL : need(j, "e", 0, 255));
+                if (j.has("t") && !j.isNull("t")) o.put("t", need(j, "t", 0, 130)); // machine-scale °C
                 clean = o.toString();
             } catch (Exception e) { return; }
         }
@@ -310,6 +311,17 @@ public class MainActivity extends Activity {
     }
 
     @JavascriptInterface public String pendingRestore() { return K2Widget.prefs(this).getString("restore", ""); }
+
+    /** The brew state: the five values this app just set on the machine and saw read back. Widgets brew with exactly these. */
+    @JavascriptInterface public void setBrewState(String json) {
+        try {
+            JSONObject j = new JSONObject(json), o = new JSONObject();
+            o.put("t", need(j, "t", 0, 130)).put("f", need(j, "f", 0, 9)).put("s", need(j, "s", 0, 255)).put("h", need(j, "h", 0, 255));
+            o.put("e", j.isNull("e") ? JSONObject.NULL : need(j, "e", 0, 255));
+            K2Widget.prefs(this).edit().putString("brew", o.toString()).apply();
+            K2Widget.redraw(this);
+        } catch (Exception e) { /* ignored: the page only sends what it built */ }
+    }
 
     /** Purge settings from the page: {e: seconds 30..250, f: flow 0..9 or null for the brew's own}. */
     @JavascriptInterface public void setPurge(String json) {
@@ -512,7 +524,6 @@ public class MainActivity extends Activity {
             for (byte x : v) sb.append(String.format("%02x", x & 0xFF));
             Log.i("K2", "rx " + sb);
             String st = K2Widget.status(MainActivity.this, v); // keep the home-screen widget's battery/temp current
-            K2Widget.noteSettings(MainActivity.this, v);          // and the settings it shows for a brew
             if (st != null) {
                 int state = v[9] & 0xFF;
                 String key = st + state;
@@ -520,7 +531,12 @@ public class MainActivity extends Activity {
                 android.content.SharedPreferences p = K2Widget.prefs(MainActivity.this);
                 p.edit().putLong("appHold", System.currentTimeMillis() + 5000).apply();
                 boolean first = !p.getBoolean("linked", false); // the machine has answered: now the widgets may show their buttons
-                if (first || !key.equals(lastStatus)) { lastStatus = key; main.post(() -> { if (first) K2Widget.setLinked(MainActivity.this, true); K2Widget.show(MainActivity.this, st, state); }); }
+                if (first || !key.equals(lastStatus)) { lastStatus = key; main.post(() -> {
+                    if (first) K2Widget.setLinked(MainActivity.this, true);
+                    boolean was = K2Widget.runMode(K2Widget.savedState(K2Widget.prefs(MainActivity.this))) >= 0;
+                    K2Widget.show(MainActivity.this, st, state);
+                    if (was && K2Widget.runMode(state) < 0) K2OneWidget.machineStopped(MainActivity.this); // stopped on the machine or in the app
+                }); }
             }
             js("data", sb.toString());
         }

@@ -34,6 +34,32 @@
             android:scaleType="fitCenter"
             android:src="@drawable/ic_search" />
 
+        <FrameLayout
+            android:id="@+id/ostop"
+            android:layout_width="44dp"
+            android:layout_height="38dp"
+            android:visibility="gone">
+
+            <ImageView
+                android:layout_width="44dp"
+                android:layout_height="38dp"
+                android:contentDescription="Stop"
+                android:padding="2dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_batt" />
+
+            <TextView
+                android:id="@+id/obatt"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:paddingEnd="4dp"
+                android:text=""
+                android:textColor="#FFFFFF"
+                android:textSize="9sp"
+                android:textStyle="bold" />
+        </FrameLayout>
+
         <TextView
             android:id="@+id/olabel"
             android:layout_width="match_parent"

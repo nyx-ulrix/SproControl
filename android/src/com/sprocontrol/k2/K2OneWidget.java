@@ -48,35 +48,47 @@ public class K2OneWidget extends AppWidgetProvider {
 
     static void advance(Context c, int to) { K2Widget.prefs(c).edit().putInt("oneIdx", to).apply(); }
 
+    /** The machine went from running to idle without a Stop tap here (its own button, or the app): a Stop step
+     *  waiting in the cycle is used up, so the next tap is the next step. */
+    static void machineStopped(Context c) {
+        String[] o = order(c);
+        int idx = Math.floorMod(K2Widget.prefs(c).getInt("oneIdx", 0), o.length);
+        if (o[idx].equals("stop")) { advance(c, idx + 1); redraw(c); }
+    }
+
     static RemoteViews views(Context c) {
         String step = step(c);
         RemoteViews v = new RemoteViews(c.getPackageName(), R.layout.widget_one);
+        PendingIntent tap = PendingIntent.getBroadcast(c, 10, new Intent(c, K2OneWidget.class).setAction(TAP), PendingIntent.FLAG_IMMUTABLE);
         int icon; String label = "";
         switch (step) {
             case "connect": icon = R.drawable.ic_search; break;
             case "purge":   icon = R.drawable.ic_purge; break;
             case "stop":    icon = R.drawable.ic_stop; break;
             case "heat":    icon = R.drawable.ic_heat; break;
-            case "extract": icon = R.drawable.ic_extract; label = dev(c); break;
-            default:        icon = R.drawable.ic_both;    label = dev(c);
+            case "extract": icon = R.drawable.ic_extract; label = brew(c); break;
+            default:        icon = R.drawable.ic_both;    label = brew(c);
         }
         boolean searching = System.currentTimeMillis() < K2Widget.prefs(c).getLong("tapBusy", 0); // tap in progress
-        v.setViewVisibility(R.id.obusy, searching ? View.VISIBLE : View.GONE); // spinner while a tap looks for the machine
-        v.setViewVisibility(R.id.obtn, searching ? View.GONE : View.VISIBLE);
         int err = K2Widget.prefs(c).getInt("err", 0);
+        v.setViewVisibility(R.id.obusy, searching ? View.VISIBLE : View.GONE); // spinner while a tap looks for the machine
+        boolean battery = step.equals("stop") && !searching && err < 1; // the Stop face: a battery with the charge inside
+        v.setViewVisibility(R.id.obtn, searching || battery ? View.GONE : View.VISIBLE);
+        v.setViewVisibility(R.id.ostop, battery ? View.VISIBLE : View.GONE);
+        v.setTextViewText(R.id.obatt, K2Widget.prefs(c).getInt("batt", -1) < 0 ? "" : K2Widget.prefs(c).getInt("batt", 0) + "%");
         if (err >= 1 && err <= 3) icon = R.drawable.ic_warn; // the machine reports dry burning / overheating / a short: warn instead of the step
         v.setImageViewResource(R.id.obtn, icon);
+        v.setOnClickPendingIntent(R.id.ostop, tap);
         v.setTextViewText(R.id.olabel, label);
         v.setViewVisibility(R.id.olabel, label.isEmpty() ? View.GONE : View.VISIBLE);
         v.setFloat(R.id.oneroot, "setAlpha", step.equals("connect") ? 0.45f : 1f);
-        PendingIntent tap = PendingIntent.getBroadcast(c, 10, new Intent(c, K2OneWidget.class).setAction(TAP), PendingIntent.FLAG_IMMUTABLE);
         v.setOnClickPendingIntent(R.id.oneroot, tap);
         v.setOnClickPendingIntent(R.id.obtn, tap);
         return v;
     }
 
-    /** What a brew will use: the settings last read from the machine, as "pre-soak • hold • temp". */
-    static String dev(Context c) { String d = K2Widget.deviceProfile(c); return d == null ? "" : d; }
+    /** What a brew will send: the brew state the app last set and saw confirmed, as "pre-soak • hold • temp". */
+    static String brew(Context c) { String d = K2Widget.brewLabel(c); return d == null ? "" : d; }
 
     static void redraw(Context c) {
         AppWidgetManager.getInstance(c).updateAppWidget(new ComponentName(c, K2OneWidget.class), views(c));

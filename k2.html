@@ -371,8 +371,10 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
       if(pendingCmd)setTimeout(runPending,350); // after the handshake settles (and the last-used preset is applied)
       updatePName(); // after pLevel above, so the match sees this reply's flow
       rememberState();
-      if(first&&restorePending()&&!(state in STATE_MODE))applyRestore();
-      if(autoApply){autoApply=false;var lp=lastP();if(lp){remember(lp);if(!same(lp,nowP()))applyPreset(lp);}}
+      // A purge the widget started and could not finish (the app took the link): put its settings back now if the
+      // machine is idle, or once this purge ends.
+      if(first&&restorePending()){if(!(state in STATE_MODE))applyRestore();else{purgeRestore=restorePending();purgeT0=Date.now();purgeS=purgeCfg().e;}}
+      if(autoApply){autoApply=false;var lp=lastP();if(lp&&same(lp,nowP()))remember(lp);} // name the machine's settings if a preset matches; never change them
     }}
 
   // Read-back check: after a set, the matching get must return what we sent (as HappyGo's _save does).
@@ -386,10 +388,14 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
     setTimeout(function(){if(pend[key]!==p)return;send(p.set[0],p.set[1]);send(p.query);arm(key);},300);}
   function verify(key,got){var p=pend[key];if(!p)return;
     var cut=function(s){return String(s).split(',').slice(0,p.n).join();}; // n: how many fields matter (3 for a purge)
-    if(cut(got)===cut(p.want)){clearTimeout(p.t);delete pend[key];delete bad[key];toast(p.name+' saved');}
+    if(cut(got)===cut(p.want)){clearTimeout(p.t);delete pend[key];delete bad[key];toast(p.name+' saved');pushBrew();}
     else if(++p.tries<4){again(key);return;} // mismatch: dropped or refused, so send the set again
     else{clearTimeout(p.t);delete pend[key];bad[key]=true;toast(p.name+' not accepted',true);}
     syncModeUI();}
+  // The widgets' brew state: the five values the machine has just read back as set here. Nothing else ever changes it.
+  function pushBrew(){if(pend.temp||pend.param||bad.temp||bad.param||!live||!gotTemp)return;var p=nowP();
+    if(p&&window.AndroidBle&&AndroidBle.setBrewState)AndroidBle.setBrewState(JSON.stringify({t:p.t,f:p.f,s:p.s,h:p.h,e:p.e}));}
+  function fmtP(p){return p.s+' • '+p.h+' • '+p.t+'°C';}
   // Why a brew may not start: the machine has to hold the five settings shown (temp, flow, pre-soak, hold, extraction).
   function brewBlock(){if(!live||!gotTemp)return 'Waiting for the machine';if(lastErr)return lastErr;
     if(pend.temp||pend.param)return 'Checking settings';
@@ -713,17 +719,20 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
     brewBtns.forEach(function(b){b.classList.toggle('blocked',!!why);b.setAttribute('aria-disabled',why?'true':'false');});}
   var purgeRestore=null;
   function saveRestore(r){try{r?localStorage.setItem('k2-purge-restore',JSON.stringify(r)):localStorage.removeItem('k2-purge-restore');}catch(e){}
-    if(window.AndroidBle&&AndroidBle.setRestore)AndroidBle.setRestore(r?JSON.stringify({f:r.f,s:r.soak,h:r.stand,e:r.ext}):'');}
+    if(window.AndroidBle&&AndroidBle.setRestore)AndroidBle.setRestore(r?JSON.stringify({f:r.f,s:r.soak,h:r.stand,e:r.ext,t:typeof r.t==='number'?r.t:null}):'');}
   function restorePending(){var r=null;
     try{r=JSON.parse(localStorage.getItem('k2-purge-restore'));}catch(e){}
-    if(!r&&window.AndroidBle&&AndroidBle.pendingRestore){try{var j=JSON.parse(AndroidBle.pendingRestore()||'null');if(j)r={f:j.f,soak:j.s,stand:j.h,ext:j.e===undefined?null:j.e};}catch(e){}}
+    if(!r&&window.AndroidBle&&AndroidBle.pendingRestore){try{var j=JSON.parse(AndroidBle.pendingRestore()||'null');if(j)r={f:j.f,soak:j.s,stand:j.h,ext:j.e===undefined?null:j.e,t:typeof j.t==='number'?j.t:null};}catch(e){}}
     return r&&typeof r.soak==='number'&&typeof r.stand==='number'?r:null;}
   function applyRestore(){var r=restorePending();if(!r||!live)return;saveRestore(null);
     if(typeof r.f==='number')pLevel=Math.max(1,Math.min(3,r.f-FMIN+1));
     params.soak[0]=Math.max(params.soak[1],Math.min(params.soak[2],r.soak));
     params.stand[0]=Math.max(params.stand[1],Math.min(params.stand[2],r.stand));
     if(params.ext&&r.ext!==null)params.ext[0]=Math.max(params.ext[1],Math.min(params.ext[2],r.ext));
-    renderSegs();renderTimers();renderExt();sendFlow(3);toast('Settings restored after purge');}
+    renderSegs();renderTimers();renderExt();sendFlow(3);
+    toast('Back to '+fmtP({s:params.soak[0],h:params.stand[0],t:typeof r.t==='number'?r.t+off:Math.round(target)})); // what the purge put back, as pre-soak • hold • temp
+    // The temperature too, when it was kept and the machine no longer holds it.
+    if(typeof r.t==='number'&&haveT!==null&&haveT!==r.t&&!heatingNow()){target=clampT(r.t+off);renderTemp();sendTemp();}}
   var purgeT0=0,purgeS=30;
   function purge(){if(!connected||!live||mode)return;
     var pc=purgeCfg(),cur=uiParams(),f=pc.f===null?cur[0]:Math.max(FMIN,Math.min(FMAX,pc.f)),
@@ -732,7 +741,7 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
     // The temperature is never touched. If the machine already holds the purge settings there is nothing
     // to swap or put back; otherwise keep the brew settings and check flow / pre-soak / hold on the way in.
     if(wantP.join()!==cur.join()){
-      purgeRestore={f:cur[0],soak:cur[1],stand:cur[2],ext:e===null?null:cur[3]};saveRestore(purgeRestore);
+      purgeRestore={f:cur[0],soak:cur[1],stand:cur[2],ext:e===null?null:cur[3],t:haveT};saveRestore(purgeRestore);
       pLevel=Math.max(1,Math.min(3,f-FMIN+1));params.soak[0]=wantP[1];params.stand[0]=wantP[2];if(e!==null)params.ext[0]=e;
       renderSegs();renderTimers();renderExt();sendFlow(3);}
     purgeT0=Date.now();purgeS=e||30;
@@ -855,7 +864,7 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
   namePill.addEventListener('keydown',function(e){if(renaming&&e.key===' ')e.stopPropagation();});
 
   restoreState();renderReadout();renderSegs();renderTimers();renderExt();syncModeUI();updatePName();
-  window.__k2={frame:frame,feed:feed,onFrame:onFrame}; // self-test hook (tests/page_test.js); not reachable from the machine
+  window.__k2={frame:frame,feed:feed,onFrame:onFrame,apply:applyPreset}; // self-test hook (tests/page_test.js); not reachable from the machine
 })();
 </script>
 </body></html>

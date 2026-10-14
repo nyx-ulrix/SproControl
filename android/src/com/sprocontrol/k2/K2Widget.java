@@ -178,23 +178,6 @@ public class K2Widget extends AppWidgetProvider {
     static final String STALE = "com.sprocontrol.k2.STALE";
     static final long FRESH_MS = 9_000; // a link is only "linked" while status frames keep coming (one a second)
 
-    /** Keeps the settings the machine last reported (0x15 temp in °F, 0x17 flow/pre-soak/hold/extraction). */
-    static void noteSettings(Context c, byte[] v) {
-        if (!valid(v)) return;
-        SharedPreferences.Editor e = prefs(c).edit();
-        if (v[4] == 0x15 && v.length >= 8) e.putInt("devT", Math.round(((v[7] & 0xFF) - 32) / 1.8f));
-        else if (v[4] == 0x17 && v.length >= 12) e.putInt("devF", v[5] & 0xFF).putInt("devS", v[6] & 0xFF).putInt("devH", v[9] & 0xFF).putInt("devE", v.length > 14 ? v[12] & 0xFF : -1);
-        else return;
-        e.apply();
-    }
-
-    /** "7 • 7 • 95°C" (pre-soak • hold • temperature with the app's offset) from the machine's last report, or null. */
-    static String deviceProfile(Context c) {
-        SharedPreferences p = prefs(c);
-        if (!p.contains("devT") || !p.contains("devS")) return null;
-        return p.getInt("devS", 0) + " • " + p.getInt("devH", 0) + " • " + (p.getInt("devT", 0) + p.getInt("offset", 0)) + "°C";
-    }
-
     /** Linked only while the machine is actually heard from; a stale link (app force-stopped, machine off) shows Connect / Search. */
     static boolean isLinked(SharedPreferences p) {
         return p.getBoolean("linked", false) && System.currentTimeMillis() - p.getLong("statusAt", 0) < FRESH_MS;
@@ -203,19 +186,10 @@ public class K2Widget extends AppWidgetProvider {
     static String status(Context c, byte[] v) {
         if (!valid(v) || v.length < 11 || v[4] != 0) return null;
         int err = v.length > 10 ? v[10] & 0xFF : 0;
-        if (err != prefs(c).getInt("err", 0)) prefs(c).edit().putInt("err", err > 5 ? 0 : err).apply(); // the widgets warn on 1..3
+        SharedPreferences.Editor e = prefs(c).edit().putInt("batt", v[6] & 0x7F);
+        if (err != prefs(c).getInt("err", 0)) e.putInt("err", err > 5 ? 0 : err); // the widgets warn on 1..3
+        e.apply();
         return (v[6] & 0x7F) + "% · " + ((v[8] & 0xFF) + prefs(c).getInt("offset", 0)) + "°C";
-    }
-
-    /** SET_WORK_PARAM carrying the settings a purge replaced, or null if nothing is pending. */
-    static byte[] restoreFrame(Context c) {
-        try {
-            String s = prefs(c).getString("restore", "");
-            if (s.isEmpty()) return null;
-            JSONObject j = new JSONObject(s);
-            return j.isNull("e") ? frame(0x18, j.getInt("f"), j.getInt("s"), j.getInt("h"))
-                                 : frame(0x18, j.getInt("f"), j.getInt("s"), j.getInt("h"), j.getInt("e"));
-        } catch (Exception e) { return null; }
     }
 
     static byte[] frame(int cmd, int... data) {
@@ -228,15 +202,27 @@ public class K2Widget extends AppWidgetProvider {
         return f;
     }
 
-    /** The last-used profile as SET_TEMP (°F on the K2) + SET_WORK_PARAM frames, or none.
-     *  MainActivity.setProfile only stores validated values; frame() clamps to a byte regardless. */
-    static List<byte[]> profileFrames(Context c) { return profileFrames(c, profile(c)); }
+    /** The brew state: the five values the app last set on the machine and saw confirmed (prefs "brew"). Only the
+     *  app changes it (a preset, or an adjusted value); a widget brew sends exactly this, nothing else. */
+    static JSONObject brewState(Context c) {
+        try { String s = prefs(c).getString("brew", ""); return s.isEmpty() ? null : new JSONObject(s); }
+        catch (Exception e) { return null; }
+    }
 
-    static List<byte[]> profileFrames(Context c, JSONObject j) {
+    /** "7 • 7 • 95°C" (pre-soak • hold • temperature as shown in the app), or null when nothing has been set yet. */
+    static String brewLabel(Context c) {
+        JSONObject j = brewState(c);
+        if (j == null) return null;
+        return j.optInt("s") + " • " + j.optInt("h") + " • " + j.optInt("t") + "°C";
+    }
+
+    /** SET_TEMP (°F on the K2) + SET_WORK_PARAM for the brew state, or none when nothing has been set yet. */
+    static List<byte[]> brewFrames(Context c) {
         List<byte[]> out = new ArrayList<>();
+        JSONObject j = brewState(c);
         if (j == null) return out;
         try {
-            // profile temps are shown (offset) °C; the machine wants its own scale, in °F
+            // the state keeps shown (offset) °C; the machine wants its own scale, in °F
             out.add(frame(0x16, Math.round((j.getInt("t") - prefs(c).getInt("offset", 0)) * 1.8f + 32)));
             out.add(j.isNull("e") ? frame(0x18, j.getInt("f"), j.getInt("s"), j.getInt("h"))
                                   : frame(0x18, j.getInt("f"), j.getInt("s"), j.getInt("h"), j.getInt("e")));
@@ -244,26 +230,21 @@ public class K2Widget extends AppWidgetProvider {
         return out;
     }
 
-    /** Purge settings: the flow and seconds chosen in the app's Settings (else `flow` and 30 s), pre-soak 0, hold 0. */
-    static byte[] purgeFrame(Context c, int flow, boolean ext) {
-        int f = flow, e = 30;
+    /** The purge state: flow and seconds from Settings (else the brew's flow, or medium, and 30 s), pre-soak 0, hold 0. */
+    static byte[] purgeFrame(Context c) {
+        int f = 1, e = 30;
+        JSONObject b = brewState(c);
+        if (b != null) f = b.optInt("f", 1);
         try { JSONObject j = new JSONObject(prefs(c).getString("purge", "{}")); if (!j.isNull("f")) f = j.getInt("f"); e = j.optInt("e", 30); }
         catch (Exception x) { /* defaults */ }
-        return ext ? frame(0x18, f, 0, 0, e) : frame(0x18, f, 0, 0);
-    }
-
-    static byte[] purgeFrame(Context c) {
-        JSONObject j = profile(c);
-        int flow = 1;
-        try { if (j != null) flow = j.getInt("f"); } catch (Exception e) { /* medium */ }
-        return purgeFrame(c, flow, j == null || !j.isNull("e"));
+        return frame(0x18, f, 0, 0, e);
     }
 
     @Override public void onReceive(Context c, Intent i) {
         super.onReceive(c, i);
         String a = i.getAction();
         if (EXTRACT.equals(a)) new Tap(c, 2, EXTRACTING, goAsync()).run();        // mode extraction
-        else if (BOTH.equals(a)) new Tap(c, 1, HOT_EXTRACTING, goAsync()).run();  // mode hotExtraction, with the settings on the machine
+        else if (BOTH.equals(a)) new Tap(c, 1, HOT_EXTRACTING, goAsync()).run();  // mode hotExtraction, with the brew state
         else if (PURGE.equals(a)) new Tap(c, 2, EXTRACTING, goAsync()).purge().run();  // extraction with 0/0/30 s
         else if (SEARCH.equals(a)) new Tap(c, -1, -1, goAsync()).run();           // just reach it and read the state
         else if (CLEAR.equals(a)) { prefs(c).edit().putLong("doneUntil", 0).apply(); redraw(c); }
@@ -291,15 +272,16 @@ public class K2Widget extends AppWidgetProvider {
 
     static class Tap extends BluetoothGattCallback {
         final Context c; final int mode, runningState; final PendingResult done;
-        BluetoothGatt gatt; BluetoothGattCharacteristic tx; boolean handled, finished, isPurge, wantParams, stopOnly;
-        int lastState; long cmdT0;              // cmdT0: when the command started going out; half a second later it is over either way
-        boolean awake, probed, gotStatus;       // warm-up on a fresh link: clock acknowledged, a read answered, a status frame seen
-        Boolean confirmRunning;                 // after the command: wait for a status frame saying running (true) / idle (false)
+        BluetoothGatt gatt; BluetoothGattCharacteristic tx; boolean handled, finished, isPurge, stopOnly;
+        JSONObject want; boolean needTemp, needParam, resent; // a start waits until the brew state is read back from the machine
+        int lastState;
+        Boolean confirmRunning;                 // after the command: wait for the machine's acknowledgement (running / idle)
         Runnable onDone;                        // runs once the machine has confirmed the command (the cycle advances here)
         byte[] buf = new byte[0];               // notifications carry parts of frames, or several at once
         Tap delegate;                           // a later tap riding this session's link; frames go to it while it runs
         Tap queued;                             // a tap that arrived while the delegate was still busy: runs next
         Tap link;                               // the session whose link this tap rides (null: its own)
+        boolean awake, probed, gotStatus;       // warm-up on a fresh link: clock acknowledged, a read answered, a status frame seen
         long t0 = System.currentTimeMillis();
         String status;
 
@@ -325,7 +307,6 @@ public class K2Widget extends AppWidgetProvider {
                 return;
             }
             LinkService.touch(c); // keeps the process (and the link below) alive for a minute after this tap
-            // A link is still open from a recent tap: use it, with its newest status frame, right now.
             Tap h = held;
             if (h != null && h.gatt != null && h.tx != null && h.delegate != null) {
                 // The link is busy with the previous tap: this one runs the moment it finishes (a second connection would run late).
@@ -335,6 +316,7 @@ public class K2Widget extends AppWidgetProvider {
                 return;
             }
             if (h != null && h.gatt != null && h.tx != null) {
+                // A link is still open from a recent tap: use it, with its newest status frame, right now.
                 link = h; gatt = h.gatt; tx = h.tx; h.delegate = this;
                 Log.i("K2", "widget " + name() + ": on the held link");
                 if (lastStatus != null) rx(gatt, lastStatus);
@@ -394,14 +376,12 @@ public class K2Widget extends AppWidgetProvider {
             else { d.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE); g.writeDescriptor(d); }
         }
 
-        /** Notify-on done: act at once on the last known state (the K2's own status push only starts a few seconds
-         *  after it has been given the clock), then send the clock and ask for the state until it answers. */
+        /** Notify-on done. The K2 drops writes for a few hundred ms and only starts its status push once it has the
+         *  clock, so the clock goes first; its acknowledgement proves the link is awake and only then does the command
+         *  (or, for Connect, a warm-up read) go out. */
         @Override public void onDescriptorWrite(BluetoothGatt g, BluetoothGattDescriptor d, int status) {
             Log.i("K2", "widget: cccd written " + status + " at " + (System.currentTimeMillis() - t0) + " ms");
             if (status != BluetoothGatt.GATT_SUCCESS) { MAIN.post(() -> finish("Not a K2?", -1)); return; }
-            // The K2 drops writes for a few hundred ms after notify-on. The clock goes first (HappyGo's first command,
-            // and what starts the K2's status push); its acknowledgement proves the link is awake, and only then does
-            // the command (or, for Connect, a warm-up read) go out, so nothing is sent into the deaf window.
             MAIN.postDelayed(() -> write(g, timeFrame()), 300);
             MAIN.postDelayed(() -> { if (!awake && !finished) write(g, timeFrame()); }, 1300);
             MAIN.postDelayed(() -> { if (!awake && !finished) { awake = true; afterWake(g); } }, 2300); // no ack at all: carry on regardless
@@ -434,9 +414,16 @@ public class K2Widget extends AppWidgetProvider {
                 buf = java.util.Arrays.copyOfRange(buf, len, buf.length);
                 if (!valid(f)) { Log.i("K2", "widget: bad checksum, dropped"); continue; }
                 if (f[4] == 0 && f.length >= 11) lastStatus = f;
-                noteSettings(c, f);
                 Tap t = delegate != null && !delegate.finished ? delegate : this;
-                if (t.finished) { String st = status(c, f); if (st != null) show(c, st, f[9] & 0xFF); } // lingering: keep the widget's readout fresh
+                if (t.finished) { // lingering: keep the widget's readout fresh; a stop on the machine itself moves the cycle on
+                    String st = status(c, f);
+                    if (st != null) {
+                        int state = f[9] & 0xFF;
+                        boolean was = runMode(savedState(prefs(c))) >= 0;
+                        show(c, st, state);
+                        if (was && runMode(state) < 0) K2OneWidget.machineStopped(c);
+                    }
+                }
                 else t.rx(g, f);
             }
         }
@@ -469,41 +456,33 @@ public class K2Widget extends AppWidgetProvider {
         void afterWake(BluetoothGatt g) {
             boolean fresh = System.currentTimeMillis() - prefs(c).getLong("statusAt", 0) < 120_000;
             if (mode >= 0) { if (fresh && !handled) { handled = true; decide(g, savedState(prefs(c))); } }
-            else { // Connect: read the settings (what a brew will use and the button shows) and the temperature
-                write(g, frame(0x17)); MAIN.postDelayed(() -> write(g, frame(0x15)), 80);
-                MAIN.postDelayed(() -> { if (!probed && !finished) write(g, frame(0x17)); }, 1200); }
+            else { write(g, frame(0x17)); MAIN.postDelayed(() -> { if (!probed && !finished) write(g, frame(0x17)); }, 1200); }
         }
 
         /** Connect finishes only when the link has proven itself three ways, so the next tap is instant. */
-        void maybeConnected(BluetoothGatt g) {
+        void maybeConnected() {
             if (mode >= 0 || finished || !(awake && probed && gotStatus)) return;
-            byte[] restore = runMode(lastState) >= 0 ? null : restoreFrame(c);
-            if (restore != null) { prefs(c).edit().remove("restore").apply(); sendOnly(g, java.util.Collections.singletonList(restore)); }
             finish(status, lastState);
         }
 
         void rx(BluetoothGatt g, byte[] v) {
             if (finished) return;
             if (v[4] == 0x04 && !awake) { awake = true; Log.i("K2", "widget: awake at " + (System.currentTimeMillis() - t0) + " ms"); MAIN.postDelayed(() -> { if (!finished) afterWake(g); }, 150); return; } // a breath after the ack: a query right behind it goes unanswered
-            if (mode < 0 && v[4] == 0x17) { probed = true; maybeConnected(g); return; }
-            // Purge, step 2: the machine's current settings arrive; keep them, then purge with its own flow speed.
-            if (wantParams && v.length >= 12 && v[4] == 0x17) {
-                wantParams = false;
-                int f = v[5] & 0xFF, s = v[6] & 0xFF, h = v[9] & 0xFF;
-                boolean ext = v.length > 14;
-                byte[] purge = purgeFrame(c, f, ext);
-                // Already on the purge settings: nothing to swap now or put back later.
-                if (s == 0 && h == 0 && (purge[5] & 0xFF) == f && (!ext || (v[12] & 0xFF) == (purge[8] & 0xFF))) { go(g, null, frame(0x02, 2, 1), true); return; }
-                try {
-                    JSONObject j = new JSONObject().put("f", f).put("s", s).put("h", h);
-                    j.put("e", ext ? v[12] & 0xFF : JSONObject.NULL);
-                    prefs(c).edit().putString("restore", j.toString()).apply();
-                } catch (Exception e) { /* nothing kept; the profile still restores on the next brew */ }
-                go(g, purge, frame(0x02, 2, 1), true);
-                return;
+            if (mode < 0 && v[4] == 0x17) { probed = true; maybeConnected(); return; }
+            // Brew, step 2: the machine reads back the brew state just sent. All five must match, or nothing starts.
+            if (want != null) {
+                if (v[4] == 0x15 && v.length >= 8 && needTemp) {
+                    int got = Math.round(((v[7] & 0xFF) - 32) / 1.8f), t = want.optInt("t") - prefs(c).getInt("offset", 0);
+                    if (got == t) needTemp = false; else { Log.i("K2", "widget: temp read back " + got + " not " + t); mismatch("Temp not accepted"); return; }
+                } else if (v[4] == 0x17 && v.length >= 12 && needParam) {
+                    boolean ok = (v[5] & 0xFF) == want.optInt("f") && (v[6] & 0xFF) == want.optInt("s") && (v[9] & 0xFF) == want.optInt("h")
+                            && (want.isNull("e") || (v.length > 12 && (v[12] & 0xFF) == want.optInt("e")));
+                    if (ok) needParam = false; else { Log.i("K2", "widget: settings read back differ from the brew state"); mismatch("Settings not accepted"); return; }
+                }
+                if (!needTemp && !needParam) { Log.i("K2", "widget: brew state confirmed by the machine at " + (System.currentTimeMillis() - t0) + " ms"); want = null; go(g, frame(0x02, mode, 1), null, true); return; }
+                if (v[4] != 0) return;
             }
-            // The K2 acknowledges a start/stop (0x02 reply, 01) within ~70 ms: that is the confirmation the next
-            // button waits for; the once-a-second state push would add up to a second.
+            // The K2 acknowledges a start/stop (0x02 reply, 01) within ~70 ms: that is the confirmation the next button waits for.
             if (confirmRunning != null && v[4] == 0x02 && v.length >= 6 && (v[5] & 0xFF) == 1) {
                 int st8 = confirmRunning ? runningState : 0;
                 if (lastStatus != null && lastStatus.length > 9) lastStatus[9] = (byte) st8; // the next tap must not see the old state
@@ -517,15 +496,19 @@ public class K2Widget extends AppWidgetProvider {
             status = st;
             int now = v[9] & 0xFF;
             lastState = now;
-            // Waiting for the machine to confirm the command: the spinner stays until its state says so.
-            if (confirmRunning != null) {
-                if (confirmRunning == (runMode(now) >= 0)) { Log.i("K2", "widget: confirmed, state " + now); if (onDone != null) onDone.run(); finish(st, now); }
-                else show(c, st, -1);
-                return;
-            }
+            if (confirmRunning != null) { if (confirmRunning == (runMode(now) >= 0)) { if (onDone != null) onDone.run(); finish(st, now); } else show(c, st, -1); return; }
+            if (mode < 0) { handled = gotStatus = true; MAIN.postDelayed(() -> { if (!finished) { probed = awake = true; maybeConnected(); } }, 2500); maybeConnected(); return; }
             if (handled) return;
             handled = true;
             decide(g, now);
+        }
+
+        /** A read-back that differs: the K2 drops the odd write, so the state goes out once more; a second miss ends the tap. */
+        void mismatch(String why) {
+            if (resent) { finish(why, lastState); return; }
+            resent = true; needTemp = needParam = true;
+            List<byte[]> again = brewFrames(c); again.add(frame(0x15)); again.add(frame(0x17));
+            MAIN.postDelayed(() -> { if (!finished && want != null) sendOnly(gatt, again); }, 120);
         }
 
         /** The command, from the machine's state (a fresh frame, or the saved one right after connecting). */
@@ -534,56 +517,29 @@ public class K2Widget extends AppWidgetProvider {
             // (so a Stop tap can never start a brew, even if the saved state is stale).
             int running = runMode(now) >= 0 ? runMode(now) : runMode(savedState(prefs(c)));
             boolean stop = running >= 0;
-            byte[] restore = stop ? null : restoreFrame(c);
-            if (mode < 0) {
-                // Connect: done once the clock is acknowledged, a read answered and this status frame arrived (maybeConnected);
-                // the probe is given 2.5 s, after which the status frame alone counts.
-                gotStatus = true;
-                MAIN.postDelayed(() -> { if (!finished) { probed = awake = true; maybeConnected(g); } }, 2500);
-                maybeConnected(g);
-                return;
-            }
             if (stop) { go(g, null, frame(0x02, running, 0), false); return; }
             if (stopOnly) { if (onDone != null) onDone.run(); finish(status, now); return; } // nothing running: a Stop tap does nothing
             if (lastStatus != null && lastStatus.length > 10 && (lastStatus[10] & 0xFF) != 0) { finish("Machine error " + (lastStatus[10] & 0xFF), now); return; }
-            if (isPurge) {
-                // Purge, step 1: ask for the current settings so they can be kept (step 2 above); asked once more at 250 ms.
-                wantParams = true; deadline();
-                write(g, frame(0x17));
-                MAIN.postDelayed(() -> { if (wantParams && !finished) write(g, frame(0x17)); }, 250);
-                return;
-            }
-            // Start: settings a purge replaced go back first, then the start. The brew uses whatever the machine holds
-            // (its settings are what the app last set on it, and what the one-cell widget shows).
-            List<byte[]> frames = new ArrayList<>();
-            if (restore != null) { frames.add(restore); prefs(c).edit().remove("restore").apply(); }
-            frames.add(frame(0x02, mode, 1));
-            Log.i("K2", "widget mode " + mode + ": start" + (restore != null ? " after restore" : "") + " (machine state " + now + ")");
+            if (isPurge) { go(g, purgeFrame(c), frame(0x02, 2, 1), true); return; } // the purge state, then start
+            // Brew: the brew state goes out, is read back from the machine, and only then does the start follow.
+            want = brewState(c);
+            if (want == null) { finish("Set a brew in the app first", now); return; }
+            needTemp = needParam = true;
+            List<byte[]> frames = brewFrames(c); frames.add(frame(0x15)); frames.add(frame(0x17));
+            Log.i("K2", "widget mode " + mode + ": brew state " + brewLabel(c) + " out, then read-back (machine state " + now + ")");
             sendOnly(g, frames);
-            await(true);
+            MAIN.postDelayed(() -> { if (!finished && want != null) finish("Settings unconfirmed", lastState); }, 1500);
         }
 
-        /** Half a second from the first command frame: acknowledged by then, or over, and nothing more goes out. */
-        void deadline() {
-            if (cmdT0 != 0) return;
-            cmdT0 = System.currentTimeMillis();
-            MAIN.postDelayed(() -> { if (!finished) { Log.i("K2", "widget: no acknowledgement within 500 ms, giving up"); finish("No response", lastState); } }, 500);
-        }
-
-        /** One or two writes, then wait for the machine's state to confirm them. */
+        /** The command frames, then half a second for the machine's acknowledgement; after that nothing more is sent. */
         void go(BluetoothGatt g, byte[] a, byte[] b, boolean running) {
             List<byte[]> frames = new ArrayList<>();
             if (a != null) frames.add(a);
             if (b != null) frames.add(b);
             Log.i("K2", "widget sends " + frames.size() + " frame(s), expecting " + (running ? "running" : "idle") + " at " + (System.currentTimeMillis() - t0) + " ms");
             sendOnly(g, frames);
-            await(running);
-        }
-
-        /** Spinner until the machine acknowledges (or, failing that, its state says so) — within the half-second deadline. */
-        void await(boolean running) {
             confirmRunning = running;
-            deadline();
+            MAIN.postDelayed(() -> { if (!finished) { Log.i("K2", "widget: no acknowledgement within 500 ms, giving up"); finish("No response", lastState); } }, 500 + 80L * frames.size());
         }
 
         void sendOnly(BluetoothGatt g, List<byte[]> frames) {

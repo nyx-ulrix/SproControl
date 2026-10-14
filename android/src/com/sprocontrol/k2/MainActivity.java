@@ -122,6 +122,7 @@ public class MainActivity extends Activity {
     /** Back on screen: cancel the idle drop; if the link was already dropped, pick it up again. */
     @Override protected void onStart() {
         shown = this;
+        LinkService.stopNow(this); // the app takes the machine over from the widgets
         super.onStart();
         main.removeCallbacks(idleDrop);
         web.onResume();

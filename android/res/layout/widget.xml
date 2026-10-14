@@ -1,15 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Home-screen widget, one row: name + status on the left; the controls (timer, brew buttons or search)
      centred in the space between where the text ends and the widget's right edge. -->
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+<!-- A fixed-height bar centred in the cell: launcher cells are often much taller than one row. -->
+<LinearLayout
     android:id="@+id/wroot"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
+    android:layout_height="66dp"
+    android:layout_gravity="center_vertical"
     android:background="@drawable/widget_bg"
     android:gravity="center_vertical"
     android:orientation="horizontal"
     android:paddingStart="14dp"
     android:paddingEnd="6dp">
+
+    <ImageView
+        android:id="@+id/werr"
+        android:layout_width="30dp"
+        android:layout_height="30dp"
+        android:layout_marginEnd="8dp"
+        android:contentDescription="Machine warning"
+        android:src="@drawable/ic_warn"
+        android:visibility="gone" />
 
     <LinearLayout
         android:id="@+id/wtext"
@@ -43,6 +58,7 @@
     </LinearLayout>
 
     <LinearLayout
+        android:id="@+id/wctl"
         android:layout_width="0dp"
         android:layout_height="match_parent"
         android:layout_weight="1"
@@ -111,3 +127,4 @@
             android:src="@drawable/ic_search" />
     </LinearLayout>
 </LinearLayout>
+</FrameLayout>

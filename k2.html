@@ -650,9 +650,13 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
   function savePurge(p){try{localStorage.setItem('k2-purge',JSON.stringify(p));}catch(e){}
     if(window.AndroidBle&&AndroidBle.setPurge)AndroidBle.setPurge(JSON.stringify(p));}
   function renderPurge(){var p=purgeCfg();$('purge-e').value=p.e;$('purge-f').value=p.f===null?'':String(p.f);}
-  function purgeChanged(){var f=$('purge-f').value,e=Math.max(30,Math.min(250,Math.round(+$('purge-e').value)||30));
-    $('purge-e').value=e;savePurge({e:e,f:f===''?null:+f});}
-  $('purge-e').addEventListener('change',purgeChanged);$('purge-f').addEventListener('change',purgeChanged);
+  // The seconds field is only clamped once typing is over (blur / Enter): rewriting it per keystroke made it stick at 30.
+  function purgeChanged(fix){var f=$('purge-f').value,raw=Math.round(+$('purge-e').value),e=Math.max(30,Math.min(250,raw||30));
+    if(fix)$('purge-e').value=e;savePurge({e:e,f:f===''?null:+f});}
+  $('purge-e').addEventListener('input',function(){purgeChanged(false);});
+  $('purge-e').addEventListener('blur',function(){purgeChanged(true);});
+  $('purge-e').addEventListener('keydown',function(e){if(e.key==='Enter'){purgeChanged(true);$('purge-e').blur();}});
+  $('purge-f').addEventListener('change',function(){purgeChanged(true);});
   $('gear').addEventListener('click',function(){renderOff();renderPurge();if(!$('onew').hidden){loadOne();renderOne();}$('settings').hidden=false;});
 
   // One-button widget: the cycle of steps and the profile for Heat & Brew, kept by the app (prefs "one").

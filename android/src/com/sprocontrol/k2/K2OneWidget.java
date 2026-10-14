@@ -69,10 +69,12 @@ public class K2OneWidget extends AppWidgetProvider {
         boolean searching = System.currentTimeMillis() < K2Widget.prefs(c).getLong("tapBusy", 0); // tap in progress
         v.setViewVisibility(R.id.obusy, searching ? View.VISIBLE : View.GONE); // spinner while a tap looks for the machine
         v.setViewVisibility(R.id.obtn, searching ? View.GONE : View.VISIBLE);
+        int err = K2Widget.prefs(c).getInt("err", 0);
+        if (err >= 1 && err <= 3) icon = R.drawable.ic_warn; // the machine reports dry burning / overheating / a short: warn instead of the step
         v.setImageViewResource(R.id.obtn, icon);
         v.setTextViewText(R.id.olabel, label);
         v.setViewVisibility(R.id.olabel, label.isEmpty() ? View.GONE : View.VISIBLE);
-        v.setFloat(R.id.oneroot, "setAlpha", step.equals("connect") ? 0.45f : 1f);
+        v.setFloat(R.id.obtn, "setAlpha", step.equals("connect") ? 0.45f : 1f); // dim the icon, not the box
         PendingIntent tap = PendingIntent.getBroadcast(c, 10, new Intent(c, K2OneWidget.class).setAction(TAP), PendingIntent.FLAG_IMMUTABLE);
         v.setOnClickPendingIntent(R.id.oneroot, tap);
         v.setOnClickPendingIntent(R.id.obtn, tap);

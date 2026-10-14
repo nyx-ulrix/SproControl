@@ -60,10 +60,12 @@ machine's own frames replayed: [docs/brew-demo.mp4](docs/brew-demo.mp4).
   Purge, Heat & Brew, Extract, Heat and Stop (default purge → stop → brew → stop → purge → stop); its only text is
   the profile a brew step will send. Connect shows until a status frame has arrived and Stop takes over
   while the machine runs; whenever the link is lost the widgets go back to Search / Connect and the cycle restarts. Each tap is
-  one short Bluetooth session: connect, read one status frame, send, wait for the machine's state to confirm
-  the command (a spinner meanwhile; the cycle only moves on once it has), disconnect. The widgets never scan,
-  so they never need location; while the app itself holds the link a tap hands the command to the app. Nothing
-  polls in the background.
+  one Bluetooth session: connect, send, wait for the machine's state to confirm the command (a spinner
+  meanwhile; the cycle only moves on once it has). The link then stays open for a minute after the last tap,
+  held by a small foreground service, so the next tap sends within about 10 ms instead of reconnecting; a tap
+  on a cold link sends about 1 s after the touch. The widgets never scan, so they never need location; while
+  the app itself holds the link a tap hands the command to the app. A quiet minute drops the link and the
+  service, and nothing polls in the background.
 - **No brew on unconfirmed settings.** A brew starts only once the machine has read back all five
   settings it was sent (temperature, flow, pre-soak, hold, extraction). A rejected or unanswered set,
   or a machine error, greys the brew buttons in the app and stops a widget tap before the start frame.
@@ -214,6 +216,8 @@ add: anyone in range who knows these frames can control it. Bonding gives link e
 | Widget could not reach an unbonded K2 by address | The K2 may advertise a random address, which a plain address lookup cannot connect to: the address type is kept with the address (the app never pairs with the machine) |
 | Widget waited for a status frame that never came | The K2 only starts its once-a-second status push after it has been given the clock (HappyGo's first command): the widget now sends the clock 300 ms after notify-on, then asks for the state each second; the first status frame arrives about 3 s after connecting |
 | Widget writes silently lost | The phone's stack answers 201 (busy) to a write queued right behind another; the widget checks the result and resends after 60 ms |
+| Widget commands ignored right after connecting | The K2 drops writes for about 400 ms after notifications are enabled (HappyGo waits 300 ms): the first command waits 350 ms, and a read-back that differs or never comes resends the settings, twice at most |
+| Each tap took 4–5 s | Every tap opened a fresh link and waited for the K2's status push, which only starts a few seconds after the clock is sent. Now the link is held for a sliding minute (a foreground service keeps the process alive) and a cold tap acts on the last saved state when it is under two minutes old |
 | Widget taps fought the app for the single link | App publishes a short "hold" flag the widget respects |
 | App kept the link alive in the background | 30 s grace after leaving, then disconnect and pause the page |
 | Bundled font not loading in the APK | Private `https://` origin via `shouldInterceptRequest`; assets packaged with `jar` |

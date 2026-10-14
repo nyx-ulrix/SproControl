@@ -1,0 +1,50 @@
+package com.sprocontrol.k2;
+
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.app.Service;
+import android.content.Context;
+import android.content.Intent;
+import android.os.Handler;
+import android.os.IBinder;
+import android.os.Looper;
+
+/** Keeps the process, and with it the widgets' open Bluetooth link, alive for a minute after the last tap
+ *  (sliding), as a foreground service; then drops the link and stops. Nothing runs once it has stopped. */
+public class LinkService extends Service {
+    static final String CH = "link";
+    static final Handler MAIN = new Handler(Looper.getMainLooper());
+    static Context app;
+    static final Runnable EXPIRE = () -> { Context c = app; if (c != null) { K2Widget.dropHeld(c); c.stopService(new Intent(c, LinkService.class)); } };
+
+    /** A tap happened: (re)start the minute. */
+    static void touch(Context c) {
+        app = c.getApplicationContext();
+        MAIN.removeCallbacks(EXPIRE);
+        MAIN.postDelayed(EXPIRE, K2Widget.LINGER_MS);
+        try { app.startForegroundService(new Intent(app, LinkService.class)); } catch (Exception e) { /* not allowed right now: the tap still runs */ }
+    }
+
+    /** The app is taking over the machine: drop everything now. */
+    static void stopNow(Context c) {
+        MAIN.removeCallbacks(EXPIRE);
+        K2Widget.dropHeld(c);
+        c.stopService(new Intent(c, LinkService.class));
+    }
+
+    @Override public int onStartCommand(Intent i, int flags, int id) {
+        NotificationManager nm = getSystemService(NotificationManager.class);
+        nm.createNotificationChannel(new NotificationChannel(CH, "Machine link", NotificationManager.IMPORTANCE_MIN));
+        Notification n = new Notification.Builder(this, CH)
+                .setSmallIcon(R.drawable.ic_both).setContentTitle("SproCtrl is linked to the machine")
+                .setContentText("Drops by itself a minute after the last widget tap")
+                .setContentIntent(PendingIntent.getActivity(this, 0, new Intent(this, MainActivity.class), PendingIntent.FLAG_IMMUTABLE))
+                .setOngoing(true).build();
+        startForeground(1, n);
+        return START_NOT_STICKY;
+    }
+
+    @Override public IBinder onBind(Intent i) { return null; }
+}

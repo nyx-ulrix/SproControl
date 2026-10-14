@@ -197,7 +197,13 @@ add: anyone in range who knows these frames can control it. Bonding gives link e
    states and errors, and the fact that the only AES in the app decrypts firmware downloads, not
    Bluetooth traffic. That became `PROTOCOL.md` and `pcm_protocol.py`, whose self-check caught that
    the first hand-computed checksums were wrong, not the code.
-5. **Validation with a Bluetooth logger.** Two loggers, both `adb logcat`:
+5. **Guess and check against the machine.** Each guessed field was settled by changing one thing at
+   a time and watching the bytes: a setting moved in the official app while its logcat frames were
+   compared, then candidate frames written to the machine from the laptop (`pcm_protocol.py` over
+   bleak) and read back until the spec held byte for byte. That is how the temperature setpoint
+   turned out to be °F, and how the purge length turned out to accept any value from 0 to 255 even
+   though the machine reports a 30–250 s range.
+6. **Validation with a Bluetooth logger.** Two loggers, both `adb logcat`:
    - HappyGo logs its own traffic (`send data:` / `Receiving data:`), which showed the predicted
      handshake frames byte-for-byte and in the predicted order.
    - This app logs every frame it sends and receives under the `K2` tag. Those logs, captured during
@@ -206,7 +212,7 @@ add: anyone in range who knows these frames can control it. Bonding gives link e
      stores whole °C and reads back `floor(°C × 1.8 + 32)`, long replies arrive in fragments with their
      own headers, and writes sent in quick succession are sometimes dropped without an echo. The
      app's read-back check with resend exists because of that log.
-6. **Android got in the way.** The OPPO ROM drops scan results for apps that declare Bluetooth
+7. **Android got in the way.** The OPPO ROM drops scan results for apps that declare Bluetooth
    scanning as "never for location", so the app connects to the bonded device directly and only asks
    for location when it has to scan. The WebView has no Web Bluetooth, hence the Java bridge. A page
    loaded from `file://` cannot load its own font (cross-origin), hence the private origin. `aapt2`

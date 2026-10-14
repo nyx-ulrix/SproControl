@@ -48,6 +48,12 @@ public class K2OneWidget extends AppWidgetProvider {
 
     static void advance(Context c, int to) { K2Widget.prefs(c).edit().putInt("oneIdx", to).apply(); }
 
+    /** A Purge step's own seconds from Settings, or 0 for the Purge card's. */
+    static int purgeSecs(Context c, int idx) {
+        JSONArray a = config(c).optJSONArray("secs");
+        return a == null || idx >= a.length() || a.isNull(idx) ? 0 : a.optInt(idx, 0);
+    }
+
     /** The machine went from running to idle without a Stop tap here (its own button, or the app): a Stop step
      *  waiting in the cycle is used up, so the next tap is the next step. */
     static void machineStopped(Context c) {
@@ -101,7 +107,7 @@ public class K2OneWidget extends AppWidgetProvider {
         switch (step) {
             case "connect": new K2Widget.Tap(c, -1, -1, goAsync()).run(); break;
             // The cycle only moves on once the machine has confirmed the command (Tap.then).
-            case "purge":   new K2Widget.Tap(c, 2, K2Widget.EXTRACTING, goAsync()).purge().then(() -> advance(c, idx + 1)).run(); break;
+            case "purge":   new K2Widget.Tap(c, 2, K2Widget.EXTRACTING, goAsync()).purge(purgeSecs(c, idx)).then(() -> advance(c, idx + 1)).run(); break;
             case "brew":    new K2Widget.Tap(c, 1, K2Widget.HOT_EXTRACTING, goAsync()).then(() -> advance(c, idx + 1)).run(); break;
             case "extract": new K2Widget.Tap(c, 2, K2Widget.EXTRACTING, goAsync()).then(() -> advance(c, idx + 1)).run(); break;
             case "heat":    new K2Widget.Tap(c, 0, K2Widget.HOT_WATERING, goAsync()).then(() -> advance(c, idx + 1)).run(); break;

@@ -130,6 +130,8 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
 .srow .sic svg,.addrow .ibtn svg{width:22px;height:22px}
 .srow .snm{flex:1;min-width:0;font-size:14px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .srow .ibtn,.addrow .ibtn{width:32px;height:32px}
+.srow .psec{width:46px;height:30px;border:0;border-radius:8px;background:rgba(255,255,255,.07);color:var(--fg);font:800 13px var(--font);text-align:center;outline:none;flex:none}
+.srow .psec:focus{outline:2px solid var(--extract)}.srow .psec+.lab2{margin:0 2px 0 0}
 .srow .ibtn svg{width:16px;height:16px}
 .addrow{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
 .lab2{font-size:10.5px;font-weight:800;letter-spacing:1.4px;color:rgba(255,255,255,.55);text-transform:uppercase;margin-right:6px}
@@ -270,7 +272,7 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
         <button class="ibtn heat" data-add="heat" aria-label="Add Heat"></button>
         <button class="ibtn stop" data-add="stop" aria-label="Add Stop"></button>
       </div>
-      <p>The button steps through this cycle, one step per tap. It shows Connect until the machine is reached, and Stop whenever the machine is running. A brew from a widget uses the settings on the machine, the ones last set here; the button shows them.</p>
+      <p>The button steps through this cycle, one step per tap. It shows Connect until the machine is reached, and Stop whenever the machine is running. A brew sends the settings last set here and confirmed by the machine; the button shows them. Each Purge step can have its own seconds; blank uses the Purge card's.</p>
     </div>
     <div class="sset" id="upd" hidden>
       <div class="lab"><span>App update</span><b id="upd-ver"></b></div>
@@ -693,24 +695,35 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
             heat:['Heat',SI+'<path d="M12 3c2.5 3 4 5 4 7a4 4 0 0 1-8 0c0-2 1.5-4 4-7Z"/><path d="M6 20h12"/></svg>'],
             stop:['Stop','<svg viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="3.5"/></svg>']},
       UPI=SI+'<path d="m6 15 6-6 6 6"/></svg>',DNI=SI+'<path d="m6 9 6 6 6-6"/></svg>',
-      oneCfg={order:['purge','stop','brew','stop','purge','stop'],profile:null};
+      oneCfg={order:['purge','stop','brew','stop','purge','stop'],secs:[],profile:null}; // secs[i]: a Purge step's own seconds, null = the Purge card's
   function loadOne(){if(!(window.AndroidBle&&AndroidBle.getOneWidget))return;
     try{var j=JSON.parse(AndroidBle.getOneWidget()||'null');
-      if(j&&Array.isArray(j.order)){var o=j.order.filter(function(s){return STEP[s];});if(o.length)oneCfg={order:o,profile:null};}}catch(e){}}
+      if(j&&Array.isArray(j.order)){var o=j.order.filter(function(s){return STEP[s];});
+        var sc=Array.isArray(j.secs)?j.secs.map(function(v){return typeof v==='number'&&v>=5&&v<=250?v:null;}):[];
+        if(o.length)oneCfg={order:o,secs:sc,profile:null};}}catch(e){}}
   function saveOne(){if(window.AndroidBle&&AndroidBle.setOneWidget)AndroidBle.setOneWidget(JSON.stringify(oneCfg));renderOne();}
   function renderOne(){var list=$('onesteps');
     list.innerHTML=oneCfg.order.map(function(s,i){return '<div class="srow"><span class="sic '+s+'">'+STEP[s][1]+'</span><span class="snm"></span>'+
+      (s==='purge'?'<input class="psec" data-sec="'+i+'" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="3" aria-label="Seconds for this purge"><span class="lab2">s</span>':'')+
       '<button class="ibtn" data-up="'+i+'" aria-label="Move up"'+(i===0?' disabled':'')+'>'+UPI+'</button>'+
       '<button class="ibtn" data-down="'+i+'" aria-label="Move down"'+(i===oneCfg.order.length-1?' disabled':'')+'>'+DNI+'</button>'+
       '<button class="ibtn" data-del="'+i+'" aria-label="Remove"'+(oneCfg.order.length<2?' disabled':'')+'>'+DEL+'</button></div>';}).join('');
-    Array.prototype.forEach.call(list.querySelectorAll('.snm'),function(el,i){el.textContent=STEP[oneCfg.order[i]][0];});}
+    Array.prototype.forEach.call(list.querySelectorAll('.snm'),function(el,i){el.textContent=STEP[oneCfg.order[i]][0];});
+    Array.prototype.forEach.call(list.querySelectorAll('.psec'),function(el){var i=+el.dataset.sec,v=oneCfg.secs[i];el.value=v?v:'';el.placeholder=purgeCfg().e;});}
+  // A Purge step's own seconds: kept as typed, clamped (5-250) and saved when the field is left; blank = the Purge card's.
+  function secChanged(el,fix){var i=+el.dataset.sec,raw=Math.round(+el.value);while(oneCfg.secs.length<oneCfg.order.length)oneCfg.secs.push(null);
+    oneCfg.secs[i]=el.value.trim()===''||!raw?null:Math.max(5,Math.min(250,raw));if(fix){el.value=oneCfg.secs[i]||'';saveOne();}}
+  $('onesteps').addEventListener('input',function(e){if(e.target.classList.contains('psec'))secChanged(e.target,false);});
+  $('onesteps').addEventListener('focusout',function(e){if(e.target.classList.contains('psec'))secChanged(e.target,true);});
+  $('onesteps').addEventListener('keydown',function(e){if(e.key==='Enter'&&e.target.classList.contains('psec')){secChanged(e.target,true);e.target.blur();}});
   if(window.AndroidBle&&AndroidBle.setOneWidget){$('onew').hidden=false;
     Array.prototype.forEach.call(document.querySelectorAll('#onew [data-add]'),function(b){b.innerHTML=STEP[b.dataset.add][1];
-      b.addEventListener('click',function(){if(oneCfg.order.length>=8)return;oneCfg.order.push(b.dataset.add);saveOne();});});
+      b.addEventListener('click',function(){if(oneCfg.order.length>=8)return;while(oneCfg.secs.length<oneCfg.order.length)oneCfg.secs.push(null);oneCfg.order.push(b.dataset.add);oneCfg.secs.push(null);saveOne();});});
     $('onesteps').addEventListener('click',function(e){var b=e.target.closest('button');if(!b||b.disabled)return;var o=oneCfg.order,i;
-      if(b.dataset.up!==undefined){i=+b.dataset.up;o.splice(i-1,0,o.splice(i,1)[0]);}
-      else if(b.dataset.down!==undefined){i=+b.dataset.down;o.splice(i+1,0,o.splice(i,1)[0]);}
-      else if(b.dataset.del!==undefined){o.splice(+b.dataset.del,1);}
+      var sc=oneCfg.secs;while(sc.length<o.length)sc.push(null);
+      if(b.dataset.up!==undefined){i=+b.dataset.up;o.splice(i-1,0,o.splice(i,1)[0]);sc.splice(i-1,0,sc.splice(i,1)[0]);}
+      else if(b.dataset.down!==undefined){i=+b.dataset.down;o.splice(i+1,0,o.splice(i,1)[0]);sc.splice(i+1,0,sc.splice(i,1)[0]);}
+      else if(b.dataset.del!==undefined){o.splice(+b.dataset.del,1);sc.splice(+b.dataset.del,1);}
       saveOne();});
   }
 

@@ -283,6 +283,13 @@ public class MainActivity extends Activity {
             if (in.length() < 1 || in.length() > 8) return;
             for (int i = 0; i < in.length(); i++) { String s = in.getString(i); if (!K2OneWidget.STEPS.contains(s)) return; order.put(s); }
             o.put("order", order);
+            JSONArray secs = new JSONArray(); // one entry per step: a Purge step's own seconds, or null
+            JSONArray sin = j.optJSONArray("secs");
+            for (int i = 0; i < in.length(); i++) {
+                Object v = sin != null && i < sin.length() ? sin.opt(i) : null;
+                secs.put(v instanceof Integer && (Integer) v >= 5 && (Integer) v <= 250 ? v : JSONObject.NULL);
+            }
+            o.put("secs", secs);
             o.put("profile", JSONObject.NULL); // brews use the machine's own settings; nothing to choose here
             K2Widget.prefs(this).edit().putString("one", o.toString()).putInt("oneIdx", 0).apply();
             K2Widget.redraw(this);

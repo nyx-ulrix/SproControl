@@ -233,12 +233,15 @@ public class K2Widget extends AppWidgetProvider {
     }
 
     /** The purge state: flow and seconds from Settings (else the brew's flow, or medium, and 30 s), pre-soak 0, hold 0. */
-    static byte[] purgeFrame(Context c) {
+    static byte[] purgeFrame(Context c) { return purgeFrame(c, 0); }
+
+    static byte[] purgeFrame(Context c, int ownSecs) {
         int f = 1, e = 30;
         JSONObject b = brewState(c);
         if (b != null) f = b.optInt("f", 1);
         try { JSONObject j = new JSONObject(prefs(c).getString("purge", "{}")); if (!j.isNull("f")) f = j.getInt("f"); e = j.optInt("e", 30); }
         catch (Exception x) { /* defaults */ }
+        if (ownSecs >= 5 && ownSecs <= 250) e = ownSecs; // this step's own seconds
         return frame(0x18, f, 0, 0, e);
     }
 
@@ -292,7 +295,9 @@ public class K2Widget extends AppWidgetProvider {
             this.c = c.getApplicationContext(); this.mode = mode; this.runningState = runningState; this.done = done;
         }
 
+        int purgeOwnSecs;                       // a Purge step's own seconds (0: the Purge card's)
         Tap purge() { isPurge = true; return this; }
+        Tap purge(int secs) { isPurge = true; purgeOwnSecs = secs; return this; }
         Tap stopOnly() { stopOnly = true; return this; }                       // never starts anything
         Tap then(Runnable r) { onDone = r; return this; }
 
@@ -526,7 +531,7 @@ public class K2Widget extends AppWidgetProvider {
             if (stop) { go(g, null, frame(0x02, running, 0), false); return; }
             if (stopOnly) { if (onDone != null) onDone.run(); finish(status, now); return; } // nothing running: a Stop tap does nothing
             if (lastStatus != null && lastStatus.length > 10 && (lastStatus[10] & 0xFF) != 0) { finish("Machine error " + (lastStatus[10] & 0xFF), now); return; }
-            if (isPurge) { go(g, purgeFrame(c), frame(0x02, 2, 1), true); return; } // the purge state, then start
+            if (isPurge) { go(g, purgeFrame(c, purgeOwnSecs), frame(0x02, 2, 1), true); return; } // the purge state, then start
             // Brew: the brew state goes out, is read back from the machine, and only then does the start follow.
             want = brewState(c);
             if (want == null) { finish("Set a brew in the app first", now); return; }

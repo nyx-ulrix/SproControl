@@ -261,8 +261,7 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
         <button class="ibtn heat" data-add="heat" aria-label="Add Heat"></button>
         <button class="ibtn stop" data-add="stop" aria-label="Add Stop"></button>
       </div>
-      <div class="cal"><span class="lab2">Brew with</span><select id="oneprof" aria-label="Profile for Heat and Brew"></select></div>
-      <p>The button steps through this cycle, one step per tap. It shows Connect until the machine is reached, and Stop whenever the machine is running. "Brew with" is the profile both widgets send before Heat &amp; Brew: the last one you used, or a saved preset.</p>
+      <p>The button steps through this cycle, one step per tap. It shows Connect until the machine is reached, and Stop whenever the machine is running. A brew from a widget uses the settings on the machine, the ones last set here; the button shows them.</p>
     </div>
     <div class="sset" id="upd" hidden>
       <div class="lab"><span>App update</span><b id="upd-ver"></b></div>
@@ -670,17 +669,14 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
       oneCfg={order:['purge','stop','brew','stop','purge','stop'],profile:null};
   function loadOne(){if(!(window.AndroidBle&&AndroidBle.getOneWidget))return;
     try{var j=JSON.parse(AndroidBle.getOneWidget()||'null');
-      if(j&&Array.isArray(j.order)){var o=j.order.filter(function(s){return STEP[s];});if(o.length)oneCfg={order:o,profile:validP(j.profile)?j.profile:null};}}catch(e){}}
+      if(j&&Array.isArray(j.order)){var o=j.order.filter(function(s){return STEP[s];});if(o.length)oneCfg={order:o,profile:null};}}catch(e){}}
   function saveOne(){if(window.AndroidBle&&AndroidBle.setOneWidget)AndroidBle.setOneWidget(JSON.stringify(oneCfg));renderOne();}
   function renderOne(){var list=$('onesteps');
     list.innerHTML=oneCfg.order.map(function(s,i){return '<div class="srow"><span class="sic '+s+'">'+STEP[s][1]+'</span><span class="snm"></span>'+
       '<button class="ibtn" data-up="'+i+'" aria-label="Move up"'+(i===0?' disabled':'')+'>'+UPI+'</button>'+
       '<button class="ibtn" data-down="'+i+'" aria-label="Move down"'+(i===oneCfg.order.length-1?' disabled':'')+'>'+DNI+'</button>'+
       '<button class="ibtn" data-del="'+i+'" aria-label="Remove"'+(oneCfg.order.length<2?' disabled':'')+'>'+DEL+'</button></div>';}).join('');
-    Array.prototype.forEach.call(list.querySelectorAll('.snm'),function(el,i){el.textContent=STEP[oneCfg.order[i]][0];});
-    var sel=$('oneprof'),names=loadP().map(function(p){return p.n;});sel.innerHTML='';
-    [['','Last used']].concat(names.map(function(n){return [n,n];})).forEach(function(o){var op=document.createElement('option');op.value=o[0];op.textContent=o[1];sel.appendChild(op);});
-    sel.value=oneCfg.profile&&names.indexOf(oneCfg.profile.n)>=0?oneCfg.profile.n:'';}
+    Array.prototype.forEach.call(list.querySelectorAll('.snm'),function(el,i){el.textContent=STEP[oneCfg.order[i]][0];});}
   if(window.AndroidBle&&AndroidBle.setOneWidget){$('onew').hidden=false;
     Array.prototype.forEach.call(document.querySelectorAll('#onew [data-add]'),function(b){b.innerHTML=STEP[b.dataset.add][1];
       b.addEventListener('click',function(){if(oneCfg.order.length>=8)return;oneCfg.order.push(b.dataset.add);saveOne();});});
@@ -689,7 +685,7 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
       else if(b.dataset.down!==undefined){i=+b.dataset.down;o.splice(i+1,0,o.splice(i,1)[0]);}
       else if(b.dataset.del!==undefined){o.splice(+b.dataset.del,1);}
       saveOne();});
-    $('oneprof').addEventListener('change',function(){var n=$('oneprof').value;oneCfg.profile=n?loadP().filter(function(p){return p.n===n;})[0]||null:null;saveOne();});}
+  }
 
   // App update (APK only): one request to GitHub when tapped; the download is verified by Java before installing.
   var upd=null;

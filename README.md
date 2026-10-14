@@ -66,9 +66,12 @@ machine's own frames replayed: [docs/brew-demo.mp4](docs/brew-demo.mp4).
   on a cold link sends about 1 s after the touch. The widgets never scan, so they never need location; while
   the app itself holds the link a tap hands the command to the app. A quiet minute drops the link and the
   service, and nothing polls in the background.
-- **No brew on unconfirmed settings.** A brew starts only once the machine has read back all five
-  settings it was sent (temperature, flow, pre-soak, hold, extraction). A rejected or unanswered set,
-  or a machine error, greys the brew buttons in the app and stops a widget tap before the start frame.
+- **No brew on unconfirmed settings.** In the app a brew starts only once the machine has read back all
+  five settings it was sent (temperature, flow, pre-soak, hold, extraction); a rejected or unanswered
+  set, or a machine error, greys the brew buttons. A widget brew sends no settings at all: it runs with
+  what is on the machine (what the app last set), which the one-cell button shows as
+  `pre-soak • hold • temperature`. A widget command has half a second to be acknowledged; after that
+  nothing more is sent and the button stays put.
 - **Offline by design.** The app never touches the network on its own. The link is held while the
   app is on screen and for 30 s after you leave it, then dropped and the page is paused. Before
   connecting, the whole UI is shown greyed out with the values the machine last reported.

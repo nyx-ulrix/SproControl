@@ -280,7 +280,7 @@ public class MainActivity extends Activity {
             if (in.length() < 1 || in.length() > 8) return;
             for (int i = 0; i < in.length(); i++) { String s = in.getString(i); if (!K2OneWidget.STEPS.contains(s)) return; order.put(s); }
             o.put("order", order);
-            o.put("profile", j.isNull("profile") ? JSONObject.NULL : cleanProfile(j.getJSONObject("profile")));
+            o.put("profile", JSONObject.NULL); // brews use the machine's own settings; nothing to choose here
             K2Widget.prefs(this).edit().putString("one", o.toString()).putInt("oneIdx", 0).apply();
             K2Widget.redraw(this);
         } catch (Exception e) { /* ignored: the page only sends what it built */ }
@@ -512,6 +512,7 @@ public class MainActivity extends Activity {
             for (byte x : v) sb.append(String.format("%02x", x & 0xFF));
             Log.i("K2", "rx " + sb);
             String st = K2Widget.status(MainActivity.this, v); // keep the home-screen widget's battery/temp current
+            K2Widget.noteSettings(MainActivity.this, v);          // and the settings it shows for a brew
             if (st != null) {
                 int state = v[9] & 0xFF;
                 String key = st + state;

@@ -38,12 +38,19 @@ public class K2OneWidget extends AppWidgetProvider {
         return o;
     }
 
+    /** Where the cycle stands: its saved place, unless more than CYCLE_KEEP_MS passed since the last tap (then the start). */
+    static int idx(Context c, int n) {
+        SharedPreferences p = K2Widget.prefs(c);
+        if (System.currentTimeMillis() - p.getLong("lastTap", 0) > K2Widget.CYCLE_KEEP_MS) return 0;
+        return Math.floorMod(p.getInt("oneIdx", 0), n);
+    }
+
     static String step(Context c) {
         SharedPreferences p = K2Widget.prefs(c);
         if (!K2Widget.isLinked(p)) return "connect";
         if (K2Widget.runMode(K2Widget.savedState(p)) >= 0) return "stop";
         String[] o = order(c);
-        return o[Math.floorMod(p.getInt("oneIdx", 0), o.length)];
+        return o[idx(c, o.length)];
     }
 
     static void advance(Context c, int to) { K2Widget.prefs(c).edit().putInt("oneIdx", to).apply(); }
@@ -58,7 +65,7 @@ public class K2OneWidget extends AppWidgetProvider {
      *  waiting in the cycle is used up, so the next tap is the next step. */
     static void machineStopped(Context c) {
         String[] o = order(c);
-        int idx = Math.floorMod(K2Widget.prefs(c).getInt("oneIdx", 0), o.length);
+        int idx = idx(c, o.length);
         if (o[idx].equals("stop")) { advance(c, idx + 1); redraw(c); }
     }
 
@@ -103,7 +110,7 @@ public class K2OneWidget extends AppWidgetProvider {
         if (!TAP.equals(i.getAction())) return;
         String step = step(c);
         String[] o = order(c);
-        int idx = Math.floorMod(K2Widget.prefs(c).getInt("oneIdx", 0), o.length);
+        int idx = idx(c, o.length);
         switch (step) {
             case "connect": new K2Widget.Tap(c, -1, -1, goAsync()).run(); break;
             // The cycle only moves on once the machine has confirmed the command (Tap.then).

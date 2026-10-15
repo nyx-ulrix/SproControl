@@ -11,7 +11,7 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 
-/** Keeps the process, and with it the widgets' open Bluetooth link, alive for a minute after the last tap
+/** Keeps the process, and with it the widgets' open Bluetooth link, alive for ten minutes after the last tap
  *  (sliding), as a foreground service; then drops the link and stops. Nothing runs once it has stopped. */
 public class LinkService extends Service {
     static final String CH = "link";
@@ -39,7 +39,7 @@ public class LinkService extends Service {
         nm.createNotificationChannel(new NotificationChannel(CH, "Machine link", NotificationManager.IMPORTANCE_MIN));
         Notification n = new Notification.Builder(this, CH)
                 .setSmallIcon(R.drawable.ic_both).setContentTitle("SproCtrl is linked to the machine")
-                .setContentText("Drops by itself a minute after the last widget tap")
+                .setContentText("Drops by itself ten minutes after the last widget tap")
                 .setContentIntent(PendingIntent.getActivity(this, 0, new Intent(this, MainActivity.class), PendingIntent.FLAG_IMMUTABLE))
                 .setOngoing(true).build();
         startForeground(1, n);

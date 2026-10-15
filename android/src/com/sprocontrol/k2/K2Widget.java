@@ -162,7 +162,7 @@ public class K2Widget extends AppWidgetProvider {
     /** Unlinked (app link dropped, tap failed): the one-button widget's cycle starts over at Connect → first step. */
     static void setLinked(Context c, boolean linked) {
         SharedPreferences.Editor e = prefs(c).edit().putBoolean("linked", linked);
-        if (!linked) e.putInt("oneIdx", 0);
+        // the cycle keeps its place; K2OneWidget.idx() lets it start over only after CYCLE_KEEP_MS without a tap
         e.apply();
         redraw(c);
     }
@@ -258,7 +258,8 @@ public class K2Widget extends AppWidgetProvider {
 
     /** One widget tap = one short BLE session. mode < 0 (Search) only reads. All state is touched on the main thread. */
     // ---- the held link: after a tap the connection stays open for LINGER_MS (sliding), kept alive by LinkService ----
-    static final long LINGER_MS = 60_000;
+    static final long LINGER_MS = 600_000;        // the link stays open ten minutes after the last tap (sliding)
+    static final long CYCLE_KEEP_MS = 600_000;    // and the one-button cycle keeps its place for ten minutes after the last tap
     static Tap held;                 // the session that owns the open GATT link, if any
     static byte[] lastStatus;        // the newest status frame on that link (under a second old while it streams)
 
@@ -306,7 +307,7 @@ public class K2Widget extends AppWidgetProvider {
         /** Never scans, so location is never needed: it connects to the bonded K2 or to the address the app last reached. */
         @SuppressWarnings("MissingPermission")
         void run() {
-            prefs(c).edit().putLong("tapBusy", System.currentTimeMillis() + TAP_TIMEOUT_MS + 7000).apply(); // spinner until finish()
+            prefs(c).edit().putLong("tapBusy", System.currentTimeMillis() + TAP_TIMEOUT_MS + 7000).putLong("lastTap", System.currentTimeMillis()).apply(); // spinner until finish(); the tap time keeps the cycle alive
             // The app holds the only link the K2 accepts: the widget wins. The app drops its link and closes, and
             // this tap runs on its own link a moment later.
             if (!tookOver && System.currentTimeMillis() < prefs(c).getLong("appHold", 0)) {
@@ -317,7 +318,7 @@ public class K2Widget extends AppWidgetProvider {
                 MAIN.postDelayed(this::run, 700);
                 return;
             }
-            LinkService.touch(c); // keeps the process (and the link below) alive for a minute after this tap
+            LinkService.touch(c); // keeps the process (and the link below) alive for ten minutes after this tap
             Tap h = held;
             if (h != null && h.gatt != null && h.tx != null && h.delegate != null) {
                 // The link is busy with the previous tap: this one runs the moment it finishes (a second connection would run late).
@@ -350,7 +351,6 @@ public class K2Widget extends AppWidgetProvider {
             finished = true;
             Log.i("K2", "widget " + name() + ": " + (msg == null ? "done" : msg) + " after " + (System.currentTimeMillis() - t0) + " ms");
             SharedPreferences.Editor e = prefs(c).edit().putBoolean("linked", handled).remove("tapBusy"); // reached it -> brew buttons; else -> Search
-            if (!handled) e.putInt("oneIdx", 0); // and the one-button cycle starts over
             e.apply();
             show(c, msg, state);
             if (link != null) {

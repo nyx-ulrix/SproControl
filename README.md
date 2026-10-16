@@ -66,9 +66,9 @@ machine's own frames replayed: [docs/brew-demo.mp4](docs/brew-demo.mp4).
   the brew state a brew step will send. Both widgets show a small red dot at their top right, and the
   app's battery readout flashes red, from the charge set in Settings (30 % by default) down. A widget tap always wins: if the app holds the link, the app drops it
   and closes, and the tap runs on the widget's own link. Connect shows until a status frame has arrived and Stop takes over
-  while the machine runs; whenever the link is lost the widgets go back to Search / Connect, and the cycle keeps its place for ten minutes after the last tap before starting over. Each tap is
+  while the machine runs; whenever the link is lost the widgets go back to Search / Connect, and the cycle keeps its place for ten minutes after the last tap before starting over; after its last step it starts over 30 s later with the link dropped. Each tap is
   one Bluetooth session: connect, send, wait for the machine's state to confirm the command (a spinner
-  meanwhile; the cycle only moves on once it has). The link then stays open for ten minutes after the last tap,
+  meanwhile; the cycle only moves on once it has). The link then stays open for ten minutes after the last tap, or only 30 s once the cycle's last step has run,
   held by a small foreground service, so the next tap sends within about 10 ms instead of reconnecting; a tap
   on a cold link sends about 1 s after the touch. The widgets never scan, so they never need location; while
   the app itself holds the link, the app lets go and closes so the tap can run. Ten quiet minutes drop the

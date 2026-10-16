@@ -7,6 +7,7 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.util.Log;
 import android.view.View;
 import android.widget.RemoteViews;
 import java.util.Arrays;
@@ -53,7 +54,12 @@ public class K2OneWidget extends AppWidgetProvider {
         return o[idx(c, o.length)];
     }
 
-    static void advance(Context c, int to) { K2Widget.prefs(c).edit().putInt("oneIdx", to).apply(); }
+    /** The cycle moves on; past its last step it wraps to the first and the link is given only 30 s more. */
+    static void advance(Context c, int to) {
+        int n = order(c).length;
+        K2Widget.prefs(c).edit().putInt("oneIdx", Math.floorMod(to, n)).apply();
+        if (to >= n) { Log.i("K2", "widget: cycle complete, link drops in 30 s unless tapped"); LinkService.cycleDone(c); }
+    }
 
     /** A Purge step's own seconds from Settings, or 0 for the Purge card's. */
     static int purgeSecs(Context c, int idx) {

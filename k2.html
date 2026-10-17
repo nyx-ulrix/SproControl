@@ -501,7 +501,7 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
   // stays for 10 s or until tapped, like the widget.
   var runT0=null,runDone=null;
   function trackRun(was){var wasRun=was in STATE_MODE,isRun=state in STATE_MODE;
-    if(isRun&&!wasRun){runT0=Date.now();runDone=null;}
+    if(isRun&&!wasRun&&state!==1){runT0=Date.now();runDone=null;} // heat & extract waits for the pump (trackBrew)
     else if(!isRun&&wasRun&&runT0!==null&&runDone===null)runDone=Date.now();}
   function renderRun(){var tm=$('timer');
     if(runT0===null||(runDone!==null&&Date.now()-runDone>10000)){runT0=null;runDone=null;tm.hidden=true;return;}
@@ -512,12 +512,17 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
   // Pre-soak and Hold meters. During a brew they count down.
   // ponytail: the K2 only reports "extracting", not the phase, so the countdown is timed from the settings.
   // Extract starts the clock at once; Heat & Extract starts it when the water reaches the preset.
-  var brewT0=null,brewEnd=false;
+  var brewT0=null,brewEnd=false,peak=null;
   function brewing(){return brewT0!==null&&!brewEnd;}
+  // The pump starts at once for Extract (state 3). For Heat & Extract (state 1) the machine heats first and the
+  // status frame says nothing about the pump, so it is taken as running once the water has reached the setpoint,
+  // or once the temperature falls 2° from its peak (cold water entering the boiler), whichever comes first.
+  function pumpOn(){if(state===3)return true;if(state!==1||cur===null)return false;
+    peak=peak===null?cur:Math.max(peak,cur);return cur>=target||cur<=peak-2;}
   function trackBrew(){
-    if(state===3||(state===1&&cur!==null&&cur>=target-2)){if(brewT0===null){brewT0=Date.now();brewEnd=false;}}
+    if(pumpOn()){if(brewT0===null){brewT0=Date.now();brewEnd=false;runT0=brewT0;runDone=null;}}
     else if(state===2||state===4){if(brewT0!==null)brewEnd=true;}
-    else if(state!==1){brewT0=null;brewEnd=false;}}
+    else if(state!==1){brewT0=null;brewEnd=false;peak=null;}}
   function timerVal(k){var p=params[k];if(!brewing())return p[0];
     var el=(Date.now()-brewT0)/1000,s=params.soak[0];
     return Math.max(0,Math.ceil(k==='soak'?s-el:params.stand[0]-Math.max(0,el-s)));}

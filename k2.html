@@ -290,7 +290,7 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
   // Gauge geometry (viewBox 300x500): one centre off the right edge; Temp, Flow, Pre-soak, Hold from outside in.
   var VW=300,VH=500,CX=330,CY=250,R1=285,R2=232,RS=190,RH=150,A_BOT=124,A_TOP=236,SPAN=A_TOP-A_BOT;
   // Device-reported values (PROTOCOL.md §4.3). Defaults until the replies land.
-  var TMIN=38,TMAX=96,target=95,cur=null,batt=null;
+  var TMIN=38,TMAX=96,target=92,cur=null,batt=null;
   // params from 0x17: {soak,stand,ext:[value,min,max]|null}. Placeholders until the machine reports its own,
   // so the greyed-out preview before connecting shows the complete UI.
   var pLevel=2,FMIN=0,FMAX=2,params={soak:[5,0,10],stand:[3,0,10],ext:[60,30,250]},live=false;
@@ -588,9 +588,12 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
   function validP(p){return !!p&&typeof p.n==='string'&&p.n.length>0&&p.n.length<=20&&isNum(p.t)&&isNum(p.f)&&isNum(p.s)&&isNum(p.h)&&(p.e===null||isNum(p.e));}
   function loadP(){try{var a=JSON.parse(localStorage.getItem('k2-presets'));return Array.isArray(a)?a.filter(validP):[];}catch(e){return [];}}
   // First run: one preset with the K2's factory settings, used until something else is chosen.
-  var DEFAULT_P={n:'Default',t:95,f:2,s:7,h:7,e:250};
+  var DEFAULT_P={n:'Default',t:92,f:2,s:7,h:7,e:250};
   (function(){try{if(localStorage.getItem('k2-seeded'))return;localStorage.setItem('k2-seeded','1');
     if(!loadP().length){storeP([DEFAULT_P]);localStorage.setItem('k2-last',DEFAULT_P.n);}}catch(e){}})();
+  // An untouched Default from earlier builds (95 °C) follows the new default; an edited one is left alone.
+  (function(){try{var l=loadP(),d=l.filter(function(p){return p.n==='Default'&&p.t===95&&p.f===2&&p.s===7&&p.h===7&&p.e===250;})[0];
+    if(d){d.t=92;storeP(l);}}catch(e){}})();
   function storeP(a){try{localStorage.setItem('k2-presets',JSON.stringify(a));}catch(e){}}
   function nowP(){return live?{t:Math.round(target),f:FMIN+pLevel-1,s:params.soak[0],h:params.stand[0],e:params.ext?params.ext[0]:null}:null;}
   function same(p,c){return !!c&&p.t===c.t&&p.f===c.f&&p.s===c.s&&p.h===c.h&&(p.e===null||p.e===c.e);}

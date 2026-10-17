@@ -52,12 +52,12 @@ machine's own frames replayed: [docs/brew-demo.mp4](docs/brew-demo.mp4).
   elapsed timer sit under the readout, and the final time stays for 10 s after the brew.
 - **Presets.** Name and save the current settings; the last-used preset is re-applied on connect and
   its name sits under the temperature and in the widget. A **Default** preset with the machine's
-  factory settings (95 °C, pre-soak 7 s, hold 7 s) is there from the first run. Presets, the device
+  default (92 °C, flow high, pre-soak 7 s, hold 7 s, 250 s) is there from the first run. Presets, the device
   nickname and the offset live only on the phone.
 - **Water temperature offset.** Calibrate against a thermometer: every temperature shown is
   shifted, and the setpoint sent to the machine is corrected the other way.
 - **Presets you did not save are kept too.** Brewing with settings that match no preset keeps them as the
-  last-used profile under the name `7 • 7 • 95°C` (pre-soak • hold • temperature), so the widgets show
+  last-used profile under the name `7 • 7 • 92°C` (pre-soak • hold • temperature), so the widgets show
   and brew with exactly what you last used.
 - **Two home-screen widgets.** The row widget: dimmed with a Search button until it has reached the
   machine, then Extract / Heat & Extract / Purge, and a running timer with Stop while brewing. The

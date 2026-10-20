@@ -1,0 +1,44 @@
+{
+  "pcm_protocol.py": {
+    "mtime": 1791880571.1922166,
+    "seen": 1791880983.7636123,
+    "ast_hash": "dac3ad66b3e79dc3d6662fb6d74a8564",
+    "semantic_hash": "dac3ad66b3e79dc3d6662fb6d74a8564"
+  },
+  "PROTOCOL.md": {
+    "mtime": 1791882878.7187777,
+    "seen": 1791883231.3143787,
+    "ast_hash": "b51fadf77f45ae83436d7362a39dcde8",
+    "semantic_hash": ""
+  },
+  ".claude/launch.json": {
+    "mtime": 1791880988.7032716,
+    "seen": 1791881034.0880702,
+    "ast_hash": "0b70d2fd8d6a9565b0a0492c0400f5fd",
+    "semantic_hash": ""
+  },
+  "k2.html": {
+    "mtime": 1791884813.7599387,
+    "seen": 1791884836.1488862,
+    "ast_hash": "ad5888a5d8fd81aff653200bb637e61e",
+    "semantic_hash": ""
+  },
+  "android/build.ps1": {
+    "mtime": 1791881865.308413,
+    "seen": 1791881922.8451803,
+    "ast_hash": "8284893a0683a687b842003f1976eb13",
+    "semantic_hash": ""
+  },
+  "android/src/com/sprocontrol/k2/K2Widget.java": {
+    "mtime": 1791884698.271663,
+    "seen": 1791884836.1488862,
+    "ast_hash": "a780f014bad908d75d9b03bb27095dee",
+    "semantic_hash": ""
+  },
+  "android/src/com/sprocontrol/k2/MainActivity.java": {
+    "mtime": 1791884703.7653732,
+    "seen": 1791884836.1488862,
+    "ast_hash": "43072d6aabfd8fbe5c3fb9d6026f3e4e",
+    "semantic_hash": ""
+  }
+}

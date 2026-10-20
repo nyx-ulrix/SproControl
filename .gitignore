@@ -4,6 +4,10 @@
 !android/out/.gitkeep
 android/out/
 __pycache__/
-graphify-out/
+# graphify knowledge graph: the graph itself is published, its scratch is not
+graphify-out/cache/
+graphify-out/20*/
+graphify-out/cost.json
+graphify-out/.graphify_*
 .claude/
 *.log

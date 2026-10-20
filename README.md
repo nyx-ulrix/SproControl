@@ -101,19 +101,27 @@ machine's own frames replayed: [docs/brew-demo.mp4](docs/brew-demo.mp4).
 flowchart LR
   subgraph Phone["Android phone"]
     subgraph App["SproCtrl app"]
-      UI["k2.html<br/>gauge UI · presets · timers<br/>served from an app-private origin"]
-      MA["MainActivity<br/>BLE link · JS bridge · lifecycle"]
+      UI["k2.html<br/>meters · presets · timers · settings<br/>served from an app-private origin"]
+      MA["MainActivity<br/>BLE link · JS bridge · lifecycle · updater"]
       UI -- "AndroidBle.write(hex)" --> MA
       MA -- "k2Native.data(hex)" --> UI
     end
-    W["K2Widget · K2OneWidget<br/>home-screen widgets<br/>one short BLE session per tap"]
-    P[("SharedPreferences<br/>name · last profile · offset · state")]
+    subgraph Widgets["Home-screen widgets"]
+      KW["K2Widget<br/>row: Extract · Heat & Extract · Purge"]
+      KO["K2OneWidget<br/>one cell: a cycle of steps"]
+      TAP["K2Widget.Tap<br/>one BLE session per tap<br/>held for ten minutes"]
+      LS["LinkService<br/>foreground service that keeps<br/>the held link alive"]
+      KW --> TAP
+      KO --> TAP
+      TAP --> LS
+    end
+    P[("SharedPreferences<br/>brew state · purge state · cycle<br/>address · linked · status")]
     MA --> P
-    W --> P
+    TAP --> P
   end
   K2["iKape K2<br/>GATT service FFF0<br/>FFF2 write · FFF1 notify"]
   MA <-- "0x7F commands / 0x7E replies" --> K2
-  W <-- "BLE" --> K2
+  TAP <-- "BLE" --> K2
   subgraph Laptop
     B["Chrome: k2.html<br/>Web Bluetooth"]
     PY["pcm_protocol.py<br/>encoder · decoder · bleak"]
@@ -126,34 +134,110 @@ The page is one HTML file with no dependencies. On Android it runs in a WebView 
 its bundled font) from assets under a private `https://app.sprocontrol.local/` origin; every other
 request is denied. The page never sees Bluetooth directly: it hands complete frames to Java as hex
 and gets notification bytes back the same way, so the protocol code is identical in the APK and in
-the browser.
+the browser. The widgets never touch the page: they keep their own BLE session in `K2Widget.Tap`
+and share state with the app only through preferences.
 
-## How a session runs
+## How an app session runs
 
 ```mermaid
 flowchart TD
-  A["Tap the name"] --> B{"Bonded K2?"}
+  A["App opens or returns to the front<br/>(or the name is tapped)"] --> B{"Bonded K2?"}
   B -- yes --> C["connectGatt"]
-  B -- no --> M{"Address<br>remembered?"}
-  M -- yes --> D["Connect to it directly"] --> C
+  B -- no --> M{"Address<br/>remembered?"}
+  M -- yes --> D0["Connect to it directly"] --> C
   M -- no --> S["Scan (asks for location only now)"] --> C
-  D -- no answer --> S
+  D0 -- no answer --> S
   C --> D["Discover FFF0, enable FFF1 notifications"]
   D --> E["Wait 300 ms"]
   E --> F["Handshake, 40 ms apart:<br/>SET_TIME 0x04 · GET_TEMP 0x15 · GET_PARAM 0x17<br/>GET_APPT 0x24 · GET_INFO 0x08 · GET_CUPS 0x06 · GET_STATE 0x00"]
   F --> G["Status frames ~1/s:<br/>battery · charge · temperature · state · error"]
   G --> H{"User action"}
-  H -- "arc / bar released" --> I["SET 0x16 or 0x18, then GET"]
+  H -- "arc / bar released, preset chosen" --> I["SET 0x16 or 0x18, then GET"]
   I --> J{"Read-back matches?"}
-  J -- yes --> K["'saved'"]
+  J -- yes --> K["'saved' · brew state pushed to the widgets"]
   J -- "no, < 4 tries" --> I
-  J -- no --> L["'not accepted'"]
-  H -- "brew button" --> M["SET_WORK_STATE 0x02 [mode, 1]"]
-  M --> G
-  G -- "running state" --> N["Timer runs, pre-soak / hold count down"]
+  J -- no --> L["'not accepted' · brew buttons greyed"]
+  H -- "brew button" --> M2["SET_WORK_STATE 0x02 [mode, 1]"]
+  M2 --> G
+  G -- "pump running" --> N["Timer runs, pre-soak / hold count down"]
   G -- "complete" --> O["'Brew done', final time for 10 s"]
   F -- "a GET went unanswered" --> R["Ask again, up to 4×"] --> F
   H -- "leave the app" --> Q["30 s later: disconnect, pause page"]
+```
+
+## When a brew button is allowed
+
+```mermaid
+flowchart TD
+  T["Heat / Heat & Brew / Extract tapped"] --> A{"Handshake done?<br/>0x15 and 0x17 answered"}
+  A -- no --> X1["'Waiting for the machine'"]
+  A -- yes --> B{"Machine error<br/>in the status frame?"}
+  B -- yes --> X2["The error, nothing sent"]
+  B -- no --> C{"A set still being<br/>read back?"}
+  C -- yes --> X3["'Checking settings'"]
+  C -- no --> D{"Last set rejected<br/>or unanswered?"}
+  D -- yes --> X4["'Not accepted · set it again'"]
+  D -- no --> E{"Shown temperature and the four<br/>work params equal the machine's<br/>last read-back?"}
+  E -- no --> X5["'Not on the machine · set it again'"]
+  E -- yes --> F["SET_WORK_STATE 0x02 [mode, 1]"]
+  F --> G["Stop shown · timers wait for the pump"]
+```
+
+Purge is never gated: it sends the purge state (flow and seconds from Settings, no pre-soak or
+hold), starts, and puts the brew settings back when it ends or is stopped.
+
+## How a widget tap runs
+
+```mermaid
+flowchart TD
+  T["Widget tapped"] --> H{"App holds<br/>the link?"}
+  H -- yes --> R["App drops it and closes"] --> T2["Tap runs again 0.7 s later"]
+  H -- no --> L{"Link still held from<br/>a tap in the last ten minutes?"}
+  L -- "yes, busy" --> Q["Queued behind the running tap"]
+  L -- "yes, idle" --> D["Decide from the newest status frame<br/>(7 ms)"]
+  L -- no --> C["Connect to the bonded K2<br/>or the remembered address<br/>(never a scan, never pairing)"]
+  C --> N["Enable FFF1 notifications"]
+  N --> K["SET_TIME 0x04"]
+  K --> W{"Acknowledged?"}
+  W -- "no, 1.3 s" --> K
+  W -- yes --> D
+  D --> S{"Step"}
+  S -- "Connect" --> S1["Read 0x17 and wait for a status frame,<br/>then show the first step"]
+  S -- "Purge" --> S2["SET 0x18 purge state · START 0x02"]
+  S -- "Heat & Brew / Extract / Heat" --> S3["SET 0x16 + 0x18 brew state<br/>READ 0x15 + 0x17 · all five match?<br/>then START 0x02"]
+  S -- "Stop, or anything while running" --> S4["STOP 0x02"]
+  S2 --> A{"0x02 acknowledged<br/>within 500 ms?"}
+  S3 --> A
+  S4 --> A
+  A -- yes --> OK["Next button shown · cycle advances<br/>(70–230 ms after the tap)"]
+  A -- no --> NO["'No response' · nothing more sent<br/>button stays put"]
+  OK --> HOLD["Link held: ten minutes after the last tap,<br/>30 s once the cycle's last step ran"]
+  HOLD -- "time up" --> DROP["Link dropped · Connect shown<br/>cycle back to step one"]
+```
+
+## The one-button cycle
+
+```mermaid
+stateDiagram-v2
+  [*] --> Connect: no link, or no status frame for 9 s
+  Connect --> Step: a tap reached the machine
+  state Step {
+    [*] --> Purge
+    Purge --> Stop1: acknowledged
+    Stop1 --> HeatBrew: acknowledged, or the machine stopped itself
+    HeatBrew --> Stop2: acknowledged
+    Stop2 --> Purge2: acknowledged, or the machine stopped itself
+    Purge2 --> Stop3: acknowledged
+    Stop3 --> [*]: cycle complete
+  }
+  Step --> Step: tap within ten minutes
+  Step --> Connect: ten quiet minutes, or 30 s after the last step
+  note right of Step
+    The order, each Purge's seconds and the brew
+    state come from Settings. Stop replaces any step
+    while the machine runs. A low battery adds a red
+    dot, a machine fault replaces the icon with a warning.
+  end note
 ```
 
 ## The protocol in one table
@@ -303,6 +387,16 @@ the port with `adb reverse tcp:8765 tcp:8765`.
 | `PROTOCOL.md` | The recovered protocol, with live verification notes |
 | `tests/` | Browser self-check for the page |
 | `docs/` | Screenshots and the demo clip |
+
+## Code map
+
+[`graphify-out/`](graphify-out/) holds a knowledge graph of the code, built with
+[graphify](https://github.com/safishamsi/graphify): every class, function and call extracted from the
+Java, JavaScript and Python (231 nodes, 583 edges, 8 communities). [`GRAPH_REPORT.md`](graphify-out/GRAPH_REPORT.md)
+is the plain-language summary (hubs, communities, surprising links); [`graph.html`](graphify-out/graph.html) is
+the interactive view, a single file that opens in any browser
+([preview](https://raw.githack.com/nyx-ulrix/SproControl/master/graphify-out/graph.html)); `graph.json` is the
+graph itself for tooling.
 
 ## Not covered
 

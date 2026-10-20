@@ -343,6 +343,19 @@ not the page.
 - The widget's receiver is not exported and its intents are explicit and immutable.
 - No background work: no polling, no services, one inexact alarm to clear the final brew time.
 
+## Platforms and what runs where
+
+| Where | What | Needs |
+|---|---|---|
+| **The machine** | iKape K2 portable espresso maker (advertises as `HI-T-…`, service `FFF0`) | Nothing installed; it speaks the PcmBlePack protocol in `PROTOCOL.md`. Any K2 works, not one unit. |
+| **Android phone** | The app (`SproCtrl`), both home-screen widgets, the link service | Android 12 or newer (`minSdk 31`, built against API 34), Bluetooth LE. Permissions: Bluetooth connect and scan, location (asked only when a scan is unavoidable), foreground service (the widgets' held link), install packages (the updater). Tested on an OPPO on ColorOS 14 and on the Pixel 7a emulator (Android 16, no Bluetooth there). No Google services, no network except the update check you trigger. |
+| **Build machine** | `android/build.ps1` | Windows PowerShell 5.1, Android SDK build-tools 35.0.0 and platform 35 (`aapt2`, `d8`, `zipalign`, `apksigner`), a JDK 11+ (`javac`, `jar`, `keytool`), `adb`. No Gradle, no Android Studio needed. Other platforms: the script is 60 lines of tool calls, easy to port. |
+| **Browser** | `k2.html` as a web app over Web Bluetooth | Chrome or Edge on Windows, macOS, Linux, ChromeOS or Android, served over `http://localhost` or HTTPS. Not Firefox, not Safari, not iOS (no Web Bluetooth). Settings and the widgets are Android-only. |
+| **Laptop tools** | `pcm_protocol.py` | Python 3.11+; `bleak` and a Bluetooth adapter only for `send()` and the live probes. |
+| **Tests** | `tests/page_test.html`, `pcm_protocol.py` self-check | Any Chromium browser (headless works: `chrome --headless=new --virtual-time-budget=60000 --dump-dom …`), `python -m http.server`. |
+| **Distribution** | GitHub Releases | The in-app update check reads `releases/latest` of this repository: the tag, the `.apk` asset and the `sha256` line in the notes. |
+| **Reverse engineering** | one-off, not needed to use or build the app | nRF Connect (Android) driven over `adb`, `adb logcat`, blutter in an `ubuntu:24.04` container to read the vendor app's Dart snapshot, `bleak` on the laptop for the guess-and-check probes. |
+
 ## Build and install
 
 Requirements: Android SDK build-tools 35, platform 35, a JDK (Android Studio's works) and `adb`.

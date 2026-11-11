@@ -65,8 +65,13 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
 .center .batt b{color:var(--ready)}
 .center .bolt{width:11px!important;height:11px!important;color:var(--ready)}
 .center .phase{font-size:12px;font-weight:800;color:var(--fg);margin-top:5px}
-/* Brew timer: muted text under the phase; counts up while the machine runs, final time stays 10 s (tap to dismiss). */
-.center .timer{font-size:12px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--muted);margin-top:2px;pointer-events:auto;cursor:pointer}
+/* Brew timer: while a run is timed it is the biggest thing in the centre; the temperature steps down and the
+   preset name gives up its line. Cyan while running, green once done (kept until the next start). */
+.center .timer{font-size:46px;font-weight:900;line-height:1;letter-spacing:-1px;font-variant-numeric:tabular-nums;color:var(--extract);margin-top:4px}
+.center .timer.done{color:var(--ready)}
+.center .timer.long{font-size:36px}
+.center.timing .big{font-size:40px}
+.center.timing .prof{display:none}
 
 .actions{flex:none;height:62px;display:flex;align-items:center;justify-content:center}
 .modes{display:flex;justify-content:space-around;align-items:center;width:100%}
@@ -498,16 +503,16 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
     renderTemp();}
 
   // Elapsed brew timer: from the machine's first running state to its end (any mode); the final time
-  // stays for 10 s or until tapped, like the widget.
+  // stays on screen until the next start (a button here, or a new run reported by the machine).
   var runT0=null,runDone=null;
+  function clearRun(){runT0=null;runDone=null;renderRun();}
   function trackRun(was){var wasRun=was in STATE_MODE,isRun=state in STATE_MODE;
     if(isRun&&!wasRun&&state!==1){runT0=Date.now();runDone=null;} // heat & extract waits for the pump (trackBrew)
     else if(!isRun&&wasRun&&runT0!==null&&runDone===null)runDone=Date.now();}
   function renderRun(){var tm=$('timer');
-    if(runT0===null||(runDone!==null&&Date.now()-runDone>10000)){runT0=null;runDone=null;tm.hidden=true;return;}
+    if(runT0===null){tm.hidden=true;tm.parentNode.classList.remove('timing');return;}
     var el=Math.floor(((runDone||Date.now())-runT0)/1000);
-    tm.hidden=false;tm.textContent=Math.floor(el/60)+':'+('0'+el%60).slice(-2);tm.classList.toggle('done',runDone!==null);}
-  $('timer').addEventListener('click',function(){if(runDone!==null){runT0=null;runDone=null;renderRun();}});
+    tm.hidden=false;tm.parentNode.classList.add('timing');tm.textContent=Math.floor(el/60)+':'+('0'+el%60).slice(-2);tm.classList.toggle('done',runDone!==null);tm.classList.toggle('long',el>=600);}
 
   // Pre-soak and Hold meters. During a brew they count down.
   // ponytail: the K2 only reports "extracting", not the phase, so the countdown is timed from the settings.
@@ -533,7 +538,7 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
       $(x[3]).textContent=x[4]+' · '+v+'s'+(brewing()?' left':'');});
     renderRun();
     var ph=$('phase');
-    if(brewT0===null){ph.hidden=true;return;}
+    if(brewT0===null){ph.hidden=runDone===null;ph.textContent='Last run';return;} // names the kept final time
     ph.hidden=false;
     if(brewEnd){ph.textContent='Brew done';return;}
     var el=(Date.now()-brewT0)/1000,s=params?params.soak[0]:0,h=params?params.stand[0]:0;
@@ -786,7 +791,7 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
       purgeRestore={f:cur[0],soak:cur[1],stand:cur[2],ext:e===null?null:cur[3],t:haveT};saveRestore(purgeRestore);
       pLevel=Math.max(1,Math.min(3,f-FMIN+1));params.soak[0]=wantP[1];params.stand[0]=wantP[2];if(e!==null)params.ext[0]=e;
       renderSegs();renderTimers();renderExt();sendFlow(3);}
-    purgeT0=Date.now();purgeS=e||30;
+    purgeT0=Date.now();purgeS=e||30;clearRun();
     sendWork('extract',true);mode='extract';syncModeUI();toast('Purge: '+purgeS+' s of water');haptic([10,30,10]);}
   function setMode(m){if(!connected)return;
     if(m==='purge'){purge();return;}
@@ -796,7 +801,7 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
     var why=brewBlock();if(why){toast(why,true);haptic(12);return;} // nothing starts until the machine holds the shown settings
     if((m==='heat'||m==='both')&&batt!==null&&batt<18)
       toast('Battery under 18%: heating may not finish, extraction still works',true);
-    markBrew();sendWork(m,true);mode=m;
+    markBrew();clearRun();sendWork(m,true);mode=m;
     syncModeUI();haptic([10,30,10]);}
   document.querySelectorAll('.mode').forEach(function(btn){btn.addEventListener('click',function(){setMode(btn.dataset.mode);});});
   stopEl.addEventListener('click',function(){if(mode)setMode(mode);});

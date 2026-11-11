@@ -23,7 +23,7 @@ owner's portfolio entry is live at liewjiaen.com (repo `nyx-ulrix/liewjiaen.com`
 | Manifest (version), layouts, drawables, widget providers | `android/AndroidManifest.xml`, `android/res/` |
 | Build script (release / `-Debug` / `-Install`) | `android/build.ps1` |
 | Python encoder/decoder + `send()` over bleak, self-check | `pcm_protocol.py` |
-| Page self-test (31 checks, captured frames) | `tests/page_test.html` + `tests/page_test.js` |
+| Page self-test (33 checks, captured frames) | `tests/page_test.html` + `tests/page_test.js` |
 | Screenshots, brew clip | `docs/img/`, `docs/brew-demo.mp4` |
 | Code knowledge graph (graphify, published) | `graphify-out/GRAPH_REPORT.md`, `graph.html`, `graph.json` |
 | Release signing key (not in the repo, back it up) | `~/.android/sprocontrol-release.jks` + `.pass` beside it |
@@ -93,6 +93,8 @@ adb -s <serial> install -r android/out/k2.apk # debug over debug is fine; releas
   written while the pump runs.
 - Timers: pre-soak/hold countdown and the brew timer start with the pump: at once for Extract; for
   Heat & Extract when the water reaches the setpoint or first falls 2° from its peak.
+  The elapsed timer is the large number in the gauge centre while a run is timed (cyan, green when done);
+  the final time stays as "Last run" until the next start (any button here, or a run the machine reports).
 - Battery: readout flashes red at the Settings threshold (default 30 %) and under.
 - Updater: Settings → App update, manual only.
 

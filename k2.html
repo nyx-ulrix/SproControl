@@ -66,9 +66,8 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
 .center .bolt{width:11px!important;height:11px!important;color:var(--ready)}
 .center .phase{font-size:12px;font-weight:800;color:var(--fg);margin-top:5px}
 /* Brew timer: while a run is timed it is the biggest thing in the centre; the temperature steps down and the
-   preset name gives up its line. Cyan while running, green once done (kept until the next start). */
-.center .timer{font-size:46px;font-weight:900;line-height:1;letter-spacing:-1px;font-variant-numeric:tabular-nums;color:var(--extract);margin-top:4px}
-.center .timer.done{color:var(--ready)}
+   preset name gives up its line. White; the final time is kept as "Last run" until the next start. */
+.center .timer{font-size:46px;font-weight:900;line-height:1;letter-spacing:-1px;font-variant-numeric:tabular-nums;color:var(--fg);margin-top:4px}
 .center .timer.long{font-size:36px}
 .center.timing .big{font-size:40px}
 .center.timing .prof{display:none}

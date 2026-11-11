@@ -65,12 +65,11 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
 .center .batt b{color:var(--ready)}
 .center .bolt{width:11px!important;height:11px!important;color:var(--ready)}
 .center .phase{font-size:12px;font-weight:800;color:var(--fg);margin-top:5px}
-/* Brew timer: while a run is timed it is the biggest thing in the centre; the temperature steps down and the
-   preset name gives up its line. White; the final time is kept as "Last run" until the next start. */
-.center .timer{font-size:46px;font-weight:900;line-height:1;letter-spacing:-1px;font-variant-numeric:tabular-nums;color:var(--fg);margin-top:4px}
-.center .timer.long{font-size:36px}
-.center.timing .big{font-size:40px}
-.center.timing .prof{display:none}
+/* Brew timer: its own row under the meters while a run is timed, white, large; the final time is kept
+   (captioned "Last run") until the next start. */
+.runrow{flex:none;display:flex;justify-content:center;align-items:baseline;gap:10px;height:60px;padding-top:4px;box-sizing:border-box}
+.runrow .rlab{font-size:13px;font-weight:800;color:var(--muted)}
+.timer{font-size:52px;font-weight:900;line-height:1;letter-spacing:-1px;font-variant-numeric:tabular-nums;color:var(--fg)}
 
 .actions{flex:none;height:62px;display:flex;align-items:center;justify-content:center}
 .modes{display:flex;justify-content:space-around;align-items:center;width:100%}
@@ -212,7 +211,6 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
               <div class="prof" id="prof">Custom</div>
               <div class="read"><span id="cur" hidden="">--°</span><span class="batt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="2" y="8" width="16" height="10" rx="2"></rect><path d="M22 11v4" stroke-linecap="round"></path></svg><b id="bpct">--%</b><svg class="bolt" id="bolt" hidden="" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"></path></svg></span></div>
               <div class="phase" id="phase" hidden=""></div>
-              <div class="timer" id="timer" hidden="" role="timer" aria-label="Brew time"></div>
             </div>
           </foreignObject>
           <path id="tempHit" class="hit" fill="none" stroke="transparent" stroke-width="50" stroke-linecap="round"></path>
@@ -221,6 +219,8 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
           <path id="holdHit" class="hit" fill="none" stroke="transparent" stroke-width="32" stroke-linecap="round"></path>
         </svg>
       </div>
+
+      <div class="runrow" id="runrow" hidden=""><span class="rlab" id="rlab" hidden="">Last run</span><div class="timer" id="timer" role="timer" aria-label="Brew time"></div></div>
 
       <div class="actions">
         <div class="modes" id="modes">
@@ -509,9 +509,9 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
     if(isRun&&!wasRun&&state!==1){runT0=Date.now();runDone=null;} // heat & extract waits for the pump (trackBrew)
     else if(!isRun&&wasRun&&runT0!==null&&runDone===null)runDone=Date.now();}
   function renderRun(){var tm=$('timer');
-    if(runT0===null){tm.hidden=true;tm.parentNode.classList.remove('timing');return;}
+    if(runT0===null){$('runrow').hidden=true;return;}
     var el=Math.floor(((runDone||Date.now())-runT0)/1000);
-    tm.hidden=false;tm.parentNode.classList.add('timing');tm.textContent=Math.floor(el/60)+':'+('0'+el%60).slice(-2);tm.classList.toggle('done',runDone!==null);tm.classList.toggle('long',el>=600);}
+    $('runrow').hidden=false;tm.textContent=Math.floor(el/60)+':'+('0'+el%60).slice(-2);tm.classList.toggle('done',runDone!==null);$('rlab').hidden=runDone===null;}
 
   // Pre-soak and Hold meters. During a brew they count down.
   // ponytail: the K2 only reports "extracting", not the phase, so the countdown is timed from the settings.
@@ -537,7 +537,7 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
       $(x[3]).textContent=x[4]+' · '+v+'s'+(brewing()?' left':'');});
     renderRun();
     var ph=$('phase');
-    if(brewT0===null){ph.hidden=runDone===null;ph.textContent='Last run';return;} // names the kept final time
+    if(brewT0===null){ph.hidden=true;return;}
     ph.hidden=false;
     if(brewEnd){ph.textContent='Brew done';return;}
     var el=(Date.now()-brewT0)/1000,s=params?params.soak[0]:0,h=params?params.stand[0]:0;
@@ -655,6 +655,7 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
     var row=e.target.closest('.prow');if(row){applyPreset(list[+row.dataset.i]);menu(false);}});
   document.addEventListener('pointerdown',function(e){if(!$('pmenu').hidden&&!$('presets').contains(e.target))menu(false);});
   window.addEventListener('resize',fitPresets);
+  if(window.ResizeObserver)new ResizeObserver(fitPresets).observe($('gauge')); // the timer row shrinks the gauge too
 
   /* ---------- settings ---------- */
   var OFFMAX=10,offDrag=null;

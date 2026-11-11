@@ -48,9 +48,9 @@ machine's own frames replayed: [docs/brew-demo.mp4](docs/brew-demo.mp4).
 - **Live readout.** Water temperature, battery and charging state from the machine's status frames
   (about one per second). While heating, the preset part of the arc turns grey and the colour climbs
   with the water temperature, with bubbles rising from it.
-- **Brew timer and phases.** The pre-soak and hold arcs count down during a brew; the phase and a large
-  elapsed timer sit under the readout, and the final time stays on screen (as "Last run") until the next
-  start: a purge, an extraction or a heat.
+- **Brew timer and phases.** The pre-soak and hold arcs count down during a brew; the phase sits under the
+  readout and a large elapsed timer in its own row under the meters; the final time stays there (as
+  "Last run") until the next start: a purge, an extraction or a heat.
 - **Presets.** Name and save the current settings; the last-used preset is re-applied on connect and
   its name sits under the temperature and in the widget. A **Default** preset with the machine's
   default (92 °C, flow high, pre-soak 7 s, hold 7 s, 250 s) is there from the first run. Presets, the device

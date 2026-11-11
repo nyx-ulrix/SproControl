@@ -78,18 +78,18 @@
   // brew timers
   k.feed(fr(0x00, [1, 69, 2, 49, 3, 0])); await sleep(1100);
   check('extraction starts the countdown', /Pre-soak · \d+s left/.test($('soakLbl').textContent));
-  check('brew timer counting', await until(() => !$('timer').hidden && /^0:0[1-3]$/.test($('timer').textContent), 2500));
+  check('brew timer counting', await until(() => !$('runrow').hidden && /^0:0[1-3]$/.test($('timer').textContent), 2500));
   k.feed(fr(0x00, [1, 69, 2, 49, 4, 0])); await sleep(50);
   check('brew done shown', $('phase').textContent === 'Brew done');
-  check('final time kept', !$('timer').hidden && $('timer').classList.contains('done'));
+  check('final time kept', !$('runrow').hidden && $('timer').classList.contains('done'));
   k.feed(fr(0x00, [1, 69, 2, 49, 0, 0])); await sleep(11000);
-  check('final time stays after the stop', !$('timer').hidden && $('timer').classList.contains('done'));
-  check('kept time is named', !$('phase').hidden && $('phase').textContent === 'Last run');
+  check('final time stays after the stop', !$('runrow').hidden && $('timer').classList.contains('done'));
+  check('kept time is named', !$('rlab').hidden && $('rlab').textContent === 'Last run');
 
   // purge: params 0/0/30 then extraction start; the previous settings come back when it ends
   sent.length = 0;
   document.querySelector('.mode.purge').click();
-  check('the next start clears the old time', $('timer').hidden);
+  check('the next start clears the old time', $('runrow').hidden);
   check('purge sets 0/0/30 then starts extraction', await until(() => sent.includes('7f 00 09 c0 18 02 00 00 1e') && sent.includes('7f 00 07 8b 02 02 01')));
   k.feed(fr(0x17, [2, 0, 0, 10, 0, 0, 10, 30, 30, 250])); k.feed(fr(0x00, [1, 69, 2, 49, 3, 0])); await sleep(50);
   sent.length = 0; k.feed(fr(0x00, [1, 69, 2, 49, 4, 0]));

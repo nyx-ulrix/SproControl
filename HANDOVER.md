@@ -21,7 +21,7 @@ owner's portfolio entry is live at liewjiaen.com (repo `nyx-ulrix/liewjiaen.com`
 | Foreground service that keeps the held link alive | `android/src/com/sprocontrol/k2/LinkService.java` |
 | APK install content provider for the updater | `android/src/com/sprocontrol/k2/ApkProvider.java` |
 | Manifest (version), layouts, drawables, widget providers | `android/AndroidManifest.xml`, `android/res/` |
-| Build script (release / `-Debug` / `-Install`) | `android/build.ps1` |
+| Build script (release / `-Debug` / `-Install`) | `android/build.ps1` (Windows), `android/build.sh` (Linux: `--debug`, `--install`; never creates a key) |
 | Python encoder/decoder + `send()` over bleak, self-check | `pcm_protocol.py` |
 | Page self-test (33 checks, captured frames) | `tests/page_test.html` + `tests/page_test.js` |
 | Screenshots, brew clip | `docs/img/`, `docs/brew-demo.mp4` |
@@ -93,7 +93,7 @@ adb -s <serial> install -r android/out/k2.apk # debug over debug is fine; releas
   written while the pump runs.
 - Timers: pre-soak/hold countdown and the brew timer start with the pump: at once for Extract; for
   Heat & Extract when the water reaches the setpoint or first falls 2° from its peak.
-  The elapsed timer is the large number in the gauge centre while a run is timed (white);
+  The elapsed timer is a large white number in its own row under the meters while a run is timed;
   the final time stays as "Last run" until the next start (any button here, or a run the machine reports).
 - Battery: readout flashes red at the Settings threshold (default 30 %) and under.
 - Updater: Settings → App update, manual only.

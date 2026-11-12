@@ -5,7 +5,7 @@ Start a new chat in `C:\Users\malco\Github\SproControl` and say: **"Read HANDOVE
 SproControl is an open controller for the **iKape K2** portable espresso machine: an Android app
 (`SproCtrl`, a single-page WebView UI with a Java BLE bridge, no Gradle), two home-screen widgets,
 a Web Bluetooth browser version and a Python encoder/decoder, all built on the machine's recovered
-BLE protocol (`PROTOCOL.md`). Public repo `nyx-ulrix/SproControl`; latest release **v1.0.5**; the
+BLE protocol (`PROTOCOL.md`). Public repo `nyx-ulrix/SproControl`; latest release **v1.0.6**; the
 owner's portfolio entry is live at liewjiaen.com (repo `nyx-ulrix/liewjiaen.com`, `docs/data.json`).
 
 ## 1. Where everything is
@@ -136,6 +136,10 @@ adb -s <serial> install -r android/out/k2.apk # debug over debug is fine; releas
   for up to 8 s after the app takes over.
 
 ## 6. Where the last session stopped
+
+- 2026-11-12: v1.0.6 published from the Linux machine `inspiron` (`android/build.sh`; JDK 17 in `~/.local/jdk17`,
+  SDK in `~/Android/Sdk`, release key copied to `~/.android/`, certificate `b085e591…ab65c7` checked). Timer in its own
+  row under the meters, white; final time kept as "Last run" until the next start. Not yet tested on the phone.
 
 - v1.0.5 published (pump-based timers); README has the five diagrams, the platforms table and the code
   map; `graphify-out` is rebuilt (231 nodes, code only; the document cache had no hits) and pushed.

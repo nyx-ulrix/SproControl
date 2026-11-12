@@ -89,7 +89,7 @@
   // purge: params 0/0/30 then extraction start; the previous settings come back when it ends
   sent.length = 0;
   document.querySelector('.mode.purge').click();
-  check('the next start clears the old time', $('runrow').hidden);
+  check('the next start replaces the old time', !$('runrow').hidden && $('rlab').hidden && $('timer').textContent === '0:00');
   check('purge sets 0/0/30 then starts extraction', await until(() => sent.includes('7f 00 09 c0 18 02 00 00 1e') && sent.includes('7f 00 07 8b 02 02 01')));
   k.feed(fr(0x17, [2, 0, 0, 10, 0, 0, 10, 30, 30, 250])); k.feed(fr(0x00, [1, 69, 2, 49, 3, 0])); await sleep(50);
   sent.length = 0; k.feed(fr(0x00, [1, 69, 2, 49, 4, 0]));
@@ -128,9 +128,35 @@
   check('temporary profile named from the settings', $('prof').textContent === '7 • 7 • 92°C' && localStorage.getItem('k2-last') === '7 • 7 • 92°C');
   document.getElementById('stop').click(); await sleep(50);
 
-  // disconnect clears everything
+  // timer sequences from the machine's quirks
+  const row = () => !$('runrow').hidden, last = () => !$('rlab').hidden;
+  // a Heat & Extract that follows a "done" state with no idle between still starts the timer
+  k.feed(fr(0x00, [1, 69, 2, 49, 3, 0])); await sleep(50); k.feed(fr(0x00, [1, 69, 2, 49, 4, 0])); await sleep(50);
+  k.feed(fr(0x00, [1, 69, 2, 99, 1, 0])); await sleep(50);
+  check('heat & extract right after "done" times the new run', row() && !last());
+  k.feed(fr(0x00, [1, 69, 2, 99, 2, 0])); await sleep(50);
+  check('and keeps its final time', row() && last());
+  // a Heat & Extract whose pump start is never inferred still shows a time once the machine reports it done
+  k.feed(fr(0x00, [1, 69, 2, 49, 0, 0])); await sleep(50);
+  document.querySelector('.mode.both').click(); await sleep(50);
+  check('a start press clears the old time', !row());
+  k.feed(fr(0x00, [1, 69, 2, 60, 1, 0])); await sleep(50); k.feed(fr(0x00, [1, 69, 2, 61, 1, 0])); await sleep(50);
+  k.feed(fr(0x00, [1, 69, 2, 61, 2, 0])); await sleep(50);
+  check('heat & extract with no inferred pump start still shows a final time', row() && last());
+  k.feed(fr(0x00, [1, 69, 2, 49, 0, 0])); await sleep(50);
+  // a short purge the K2 reports as idle is timed from the press and ends after its seconds
+  document.querySelector('.mode.purge').click(); await sleep(50);
+  check('purge times from the press', row() && !last());
+  const realNow = Date.now; Date.now = () => realNow() + 300000;
+  k.feed(fr(0x00, [1, 69, 2, 49, 0, 0])); await sleep(50);
+  Date.now = realNow;
+  check('a purge reported as idle still ends with a final time', row() && last());
+  await sleep(800); k.feed(fr(0x17, [2, 7, 0, 10, 7, 0, 10, 250, 30, 250])); await sleep(50);
+
+  // disconnect clears everything but a finished time
   k2Native.gone(); await sleep(50);
   check('disconnect resets timers', $('phase').hidden === true && $('soakLbl').textContent === 'Pre-soak · 7s');
+  check('a finished time survives a dropped link', row() && last());
 
   document.body.insertAdjacentHTML('beforeend', '<pre id="results" style="position:fixed;inset:auto 0 0 0;background:#111;color:#0f0;padding:8px;z-index:99;font:12px monospace">' + results.join('\n') + '</pre>');
   window.__results = results;

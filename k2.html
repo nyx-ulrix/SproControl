@@ -503,11 +503,17 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
 
   // Elapsed brew timer: from the machine's first running state to its end (any mode); the final time
   // stays on screen until the next start (a button here, or a new run reported by the machine).
-  var runT0=null,runDone=null;
-  function clearRun(){runT0=null;runDone=null;renderRun();}
+  // runLocal: a purge is timed from the button press, because the K2 often reports a short purge as idle;
+  // it ends when the machine reports the run over, or after the purge's own seconds if it never reported one.
+  var runT0=null,runDone=null,runLocal=false;
+  function clearRun(){runT0=null;runDone=null;runLocal=false;renderRun();}
   function trackRun(was){var wasRun=was in STATE_MODE,isRun=state in STATE_MODE;
-    if(isRun&&!wasRun&&state!==1){runT0=Date.now();runDone=null;} // heat & extract waits for the pump (trackBrew)
-    else if(!isRun&&wasRun&&runT0!==null&&runDone===null)runDone=Date.now();}
+    if(isRun&&!wasRun&&state!==1){if(!runLocal)runT0=Date.now();runDone=null;runLocal=false;} // heat & extract waits for the pump (trackBrew)
+    else if(!isRun&&wasRun&&runT0!==null&&runDone===null)runDone=Date.now();
+    else if(!isRun&&!wasRun&&runLocal&&Date.now()-purgeT0>purgeS*1000){runDone=purgeT0+purgeS*1000;runLocal=false;}
+    // Heat & Extract whose pump start was never inferred: time it from the last temperature peak, so it still shows.
+    if(was===1&&(state===2||state===4)&&runT0===null&&peakT!==null){runT0=peakT;runDone=Date.now();}
+    if(!isRun)peakT=null;}
   function renderRun(){var tm=$('timer');
     if(runT0===null){$('runrow').hidden=true;return;}
     var el=Math.floor(((runDone||Date.now())-runT0)/1000);
@@ -516,16 +522,16 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
   // Pre-soak and Hold meters. During a brew they count down.
   // ponytail: the K2 only reports "extracting", not the phase, so the countdown is timed from the settings.
   // Extract starts the clock at once; Heat & Extract starts it when the water reaches the preset.
-  var brewT0=null,brewEnd=false,peak=null;
+  var brewT0=null,brewEnd=false,peak=null,peakT=null;
   function brewing(){return brewT0!==null&&!brewEnd;}
   // The pump starts at once for Extract (state 3). For Heat & Extract (state 1) the machine heats first and the
   // status frame says nothing about the pump, so it is taken as running once the water has reached the setpoint,
   // or once the temperature falls 2° from its peak (cold water entering the boiler), whichever comes first.
   function pumpOn(){if(state===3)return true;if(state!==1||cur===null)return false;
-    peak=peak===null?cur:Math.max(peak,cur);return cur>=target||cur<=peak-2;}
+    if(peak===null||cur>peak){peak=cur;peakT=Date.now();}return cur>=target||cur<=peak-2;}
   function trackBrew(){
-    if(pumpOn()){if(brewT0===null){brewT0=Date.now();brewEnd=false;runT0=brewT0;runDone=null;}}
-    else if(state===2||state===4){if(brewT0!==null)brewEnd=true;}
+    if(pumpOn()){if(brewT0===null||brewEnd){brewT0=Date.now();brewEnd=false;if(!runLocal)runT0=brewT0;runDone=null;runLocal=false;}} // a new run may follow "done" with no idle between
+    else if(state===2||state===4){if(brewT0!==null)brewEnd=true;peak=null;}
     else if(state!==1){brewT0=null;brewEnd=false;peak=null;}}
   function timerVal(k){var p=params[k];if(!brewing())return p[0];
     var el=(Date.now()-brewT0)/1000,s=params.soak[0];
@@ -791,11 +797,12 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
       purgeRestore={f:cur[0],soak:cur[1],stand:cur[2],ext:e===null?null:cur[3],t:haveT};saveRestore(purgeRestore);
       pLevel=Math.max(1,Math.min(3,f-FMIN+1));params.soak[0]=wantP[1];params.stand[0]=wantP[2];if(e!==null)params.ext[0]=e;
       renderSegs();renderTimers();renderExt();sendFlow(3);}
-    purgeT0=Date.now();purgeS=e||30;clearRun();
+    purgeT0=Date.now();purgeS=e||30;runT0=purgeT0;runDone=null;runLocal=true;renderRun();
     sendWork('extract',true);mode='extract';syncModeUI();toast('Purge: '+purgeS+' s of water');haptic([10,30,10]);}
   function setMode(m){if(!connected)return;
     if(m==='purge'){purge();return;}
     if(mode===m){sendWork(m,false);mode=null;syncModeUI();haptic(12);
+      if(runLocal){runDone=Date.now();runLocal=false;renderRun();} // a purge stopped before the machine reported it
       if(purgeRestore){purgeRestore=null;setTimeout(applyRestore,600);} // a stopped purge: settings back once the stop has landed
       return;}
     var why=brewBlock();if(why){toast(why,true);haptic(12);return;} // nothing starts until the machine holds the shown settings
@@ -837,7 +844,7 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
       stName=document.getElementById('stName'),namePill=document.getElementById('namePill');
   function disconnected(){connected=false;seenState=false;lastCharge=null;write=null;rxBuf=[];mode=null;state=0;autoApply=false;purgeRestore=null;live=false;gotTemp=false;bad={};haveT=null;
     Object.keys(pend).forEach(function(k){clearTimeout(pend[k].t);delete pend[k];}); // no 'no reply' toasts for a dead link
-    brewT0=null;brewEnd=false;runT0=null;runDone=null;drag=null;extDrag=null;tDirty=false;renderTimers();
+    brewT0=null;brewEnd=false;peak=null;peakT=null;if(runDone===null)runT0=null;runLocal=false;drag=null; // a finished time survives a dropped linkextDrag=null;tDirty=false;renderTimers();
     app.classList.add('off');dot.className='dot';stName.textContent='Disconnected · tap to reconnect';pencil.toggleAttribute('hidden',true);syncModeUI();}
   var devName='',pencil=document.getElementById('pencil'),renaming=false;
   function nick(){try{return localStorage.getItem('k2-name');}catch(e){return null;}}

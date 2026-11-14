@@ -153,6 +153,22 @@
   check('a purge reported as idle still ends with a final time', row() && last());
   await sleep(800); k.feed(fr(0x17, [2, 7, 0, 10, 7, 0, 10, 250, 30, 250])); await sleep(50);
 
+  // end timing: the K2 reports a run over ~2 s after its pump stops
+  const shift = ms => { Date.now = () => realNow() + ms; };
+  k.feed(fr(0x00, [1, 69, 2, 49, 3, 0])); await sleep(50);
+  shift(10000); k.feed(fr(0x00, [1, 69, 2, 49, 4, 0])); await sleep(50); Date.now = realNow;
+  check('an end reported by the machine is backdated 2 s', $('timer').textContent === '0:08');
+  k.feed(fr(0x00, [1, 69, 2, 49, 0, 0])); await sleep(50);
+  k.feed(fr(0x00, [1, 69, 2, 49, 3, 0])); await sleep(50);
+  shift(10000); $('stop').click(); await sleep(50);
+  shift(12000); k.feed(fr(0x00, [1, 69, 2, 49, 0, 0])); await sleep(50); Date.now = realNow;
+  check('Stop in the app ends the run at the press', $('timer').textContent === '0:10' && last());
+  k.feed(fr(0x00, [1, 69, 2, 49, 3, 0])); await sleep(50);
+  shift(5000); $('stop').click(); await sleep(50);
+  shift(10000); k.feed(fr(0x00, [1, 69, 2, 49, 3, 0])); await sleep(50); Date.now = realNow;
+  check('a Stop that never took keeps counting', !last());
+  k.feed(fr(0x00, [1, 69, 2, 49, 0, 0])); await sleep(50);
+
   // disconnect clears everything but a finished time
   k2Native.gone(); await sleep(50);
   check('disconnect resets timers', $('phase').hidden === true && $('soakLbl').textContent === 'Pre-soak · 7s');

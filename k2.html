@@ -505,14 +505,20 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
   // stays on screen until the next start (a button here, or a new run reported by the machine).
   // runLocal: a purge is timed from the button press, because the K2 often reports a short purge as idle;
   // it ends when the machine reports the run over, or after the purge's own seconds if it never reported one.
-  var runT0=null,runDone=null,runLocal=false;
-  function clearRun(){runT0=null;runDone=null;runLocal=false;renderRun();}
+  // The K2 keeps reporting a run for about 2 s after its pump stops (owner's measurement, 2026-11-14), so an end
+  // reported by the machine is backdated by END_LAG; a Stop pressed here ends the run at the press (stopRun).
+  var runT0=null,runDone=null,runLocal=false,stopT=null,END_LAG=2000;
+  function clearRun(){runT0=null;runDone=null;runLocal=false;stopT=null;renderRun();}
+  function endAt(){return Math.max(runT0,Date.now()-END_LAG);}
+  function stopRun(){if(runT0===null||runDone!==null)return;runDone=stopT=Date.now();runLocal=false;renderRun();}
   function trackRun(was){var wasRun=was in STATE_MODE,isRun=state in STATE_MODE;
-    if(isRun&&!wasRun&&state!==1){if(!runLocal)runT0=Date.now();runDone=null;runLocal=false;} // heat & extract waits for the pump (trackBrew)
-    else if(!isRun&&wasRun&&runT0!==null&&runDone===null)runDone=Date.now();
+    if(isRun&&!wasRun&&state!==1){if(!runLocal)runT0=Date.now();runDone=null;runLocal=false;stopT=null;} // heat & extract waits for the pump (trackBrew)
+    else if(isRun&&stopT!==null&&Date.now()-stopT>4000){runDone=null;stopT=null;} // the stop never took: keep counting
+    else if(!isRun&&stopT!==null)stopT=null; // the stop landed; the press time stands
+    else if(!isRun&&wasRun&&runT0!==null&&runDone===null)runDone=endAt();
     else if(!isRun&&!wasRun&&runLocal&&Date.now()-purgeT0>purgeS*1000){runDone=purgeT0+purgeS*1000;runLocal=false;}
     // Heat & Extract whose pump start was never inferred: time it from the last temperature peak, so it still shows.
-    if(was===1&&(state===2||state===4)&&runT0===null&&peakT!==null){runT0=peakT;runDone=Date.now();}
+    if(was===1&&(state===2||state===4)&&runT0===null&&peakT!==null){runT0=peakT;runDone=endAt();}
     if(!isRun)peakT=null;}
   function renderRun(){var tm=$('timer');
     if(runT0===null){$('runrow').hidden=true;return;}
@@ -530,7 +536,7 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
   function pumpOn(){if(state===3)return true;if(state!==1||cur===null)return false;
     if(peak===null||cur>peak){peak=cur;peakT=Date.now();}return cur>=target||cur<=peak-2;}
   function trackBrew(){
-    if(pumpOn()){if(brewT0===null||brewEnd){brewT0=Date.now();brewEnd=false;if(!runLocal)runT0=brewT0;runDone=null;runLocal=false;}} // a new run may follow "done" with no idle between
+    if(pumpOn()){if(brewT0===null||brewEnd){brewT0=Date.now();brewEnd=false;if(!runLocal)runT0=brewT0;runDone=null;runLocal=false;stopT=null;}} // a new run may follow "done" with no idle between
     else if(state===2||state===4){if(brewT0!==null)brewEnd=true;peak=null;}
     else if(state!==1){brewT0=null;brewEnd=false;peak=null;}}
   function timerVal(k){var p=params[k];if(!brewing())return p[0];
@@ -802,7 +808,7 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
   function setMode(m){if(!connected)return;
     if(m==='purge'){purge();return;}
     if(mode===m){sendWork(m,false);mode=null;syncModeUI();haptic(12);
-      if(runLocal){runDone=Date.now();runLocal=false;renderRun();} // a purge stopped before the machine reported it
+      stopRun(); // the pump stops on the command; the machine's report of it comes ~2 s later
       if(purgeRestore){purgeRestore=null;setTimeout(applyRestore,600);} // a stopped purge: settings back once the stop has landed
       return;}
     var why=brewBlock();if(why){toast(why,true);haptic(12);return;} // nothing starts until the machine holds the shown settings
@@ -844,7 +850,8 @@ body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-font-s
       stName=document.getElementById('stName'),namePill=document.getElementById('namePill');
   function disconnected(){connected=false;seenState=false;lastCharge=null;write=null;rxBuf=[];mode=null;state=0;autoApply=false;purgeRestore=null;live=false;gotTemp=false;bad={};haveT=null;
     Object.keys(pend).forEach(function(k){clearTimeout(pend[k].t);delete pend[k];}); // no 'no reply' toasts for a dead link
-    brewT0=null;brewEnd=false;peak=null;peakT=null;if(runDone===null)runT0=null;runLocal=false;drag=null; // a finished time survives a dropped linkextDrag=null;tDirty=false;renderTimers();
+    // a finished time survives a dropped link; an unfinished one is dropped
+    brewT0=null;brewEnd=false;peak=null;peakT=null;if(runDone===null)runT0=null;runLocal=false;stopT=null;drag=null;extDrag=null;tDirty=false;renderTimers();
     app.classList.add('off');dot.className='dot';stName.textContent='Disconnected · tap to reconnect';pencil.toggleAttribute('hidden',true);syncModeUI();}
   var devName='',pencil=document.getElementById('pencil'),renaming=false;
   function nick(){try{return localStorage.getItem('k2-name');}catch(e){return null;}}

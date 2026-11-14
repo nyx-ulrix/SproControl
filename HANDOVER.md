@@ -23,7 +23,7 @@ owner's portfolio entry is live at liewjiaen.com (repo `nyx-ulrix/liewjiaen.com`
 | Manifest (version), layouts, drawables, widget providers | `android/AndroidManifest.xml`, `android/res/` |
 | Build script (release / `-Debug` / `-Install`) | `android/build.ps1` (Windows), `android/build.sh` (Linux: `--debug`, `--install`; never creates a key) |
 | Python encoder/decoder + `send()` over bleak, self-check | `pcm_protocol.py` |
-| Page self-test (40 checks, captured frames) | `tests/page_test.html` + `tests/page_test.js` |
+| Page self-test (43 checks, captured frames) | `tests/page_test.html` + `tests/page_test.js` |
 | Screenshots, brew clip | `docs/img/`, `docs/brew-demo.mp4` |
 | Code knowledge graph (graphify, published) | `graphify-out/GRAPH_REPORT.md`, `graph.html`, `graph.json` |
 | Release signing key (not in the repo, back it up) | `~/.android/sprocontrol-release.jks` + `.pass` beside it |

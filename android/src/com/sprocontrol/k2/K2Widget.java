@@ -162,7 +162,7 @@ public class K2Widget extends AppWidgetProvider {
     /** Unlinked (app link dropped, tap failed): the one-button widget's cycle starts over at Connect → first step. */
     static void setLinked(Context c, boolean linked) {
         SharedPreferences.Editor e = prefs(c).edit().putBoolean("linked", linked);
-        // the cycle keeps its place; K2OneWidget.idx() lets it start over only after CYCLE_KEEP_MS without a tap
+        if (!linked) e.putInt("oneIdx", 0); // a dropped link (any cause) sends the cycle back to its first step
         e.apply();
         redraw(c);
     }

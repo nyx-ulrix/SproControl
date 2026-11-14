@@ -39,7 +39,8 @@ public class K2OneWidget extends AppWidgetProvider {
         return o;
     }
 
-    /** Where the cycle stands: its saved place, unless more than CYCLE_KEEP_MS passed since the last tap (then the start). */
+    /** Where the cycle stands: its saved place, unless more than CYCLE_KEEP_MS passed since the last tap (then the start).
+     *  A dropped link also puts it back at the start (K2Widget.setLinked). */
     static int idx(Context c, int n) {
         SharedPreferences p = K2Widget.prefs(c);
         if (System.currentTimeMillis() - p.getLong("lastTap", 0) > K2Widget.CYCLE_KEEP_MS) return 0;

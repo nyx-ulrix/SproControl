@@ -115,8 +115,9 @@ adb -s <serial> install -r android/out/k2.apk # debug over debug is fine; releas
   starts only when all five match; a purge sends the purge state and starts. No restore logic, no
   settings read from the machine.
 - One-cell widget: default cycle purge → stop → brew → stop → purge → stop; the cycle advances only on
-  acknowledgement; a Stop pressed on the machine consumes a Stop step; the cycle keeps its place for
-  ten minutes after the last tap (`lastTap`), then starts over. Label = brew state as
+  acknowledgement; a Stop pressed on the machine consumes a Stop step; the cycle goes back to step one
+  whenever the link drops (any cause: `K2Widget.setLinked(false)` resets `oneIdx`), and also after ten
+  minutes without a tap (`lastTap`). Label = brew state as
   `pre-soak • hold • temp` on brew/extract steps only; Stop face = square; red dot top-right under the
   battery threshold; warning triangle replaces the icon on machine faults 1–3. Linked only while
   status frames keep coming (9 s), re-checked by an alarm.
